@@ -1,0 +1,46 @@
+{% extends 'base.html' %}
+{% block title %}Leaderboard{% endblock %}
+{% block content %}
+<h2 class="mt-5">User Leaderboard</h2>
+<div class="table-responsive">
+    <table class="table table-striped" id="leaderboardTable">
+        <thead>
+            <tr>
+                <th>Email</th>
+                <th>Overall Points (Monthly)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for user in users %}
+            <tr>
+                <td>{{ user.email }}</td>
+                <td>{{ user.overall_points }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // Add search functionality
+    document.addEventListener('DOMContentLoaded', function () {
+        const table = document.getElementById('leaderboardTable');
+        const searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'form-control mb-3';
+        searchInput.placeholder = 'Search by email...';
+
+        table.parentElement.insertBefore(searchInput, table);
+
+        searchInput.addEventListener('keyup', function () {
+            const searchTerm = this.value.toLowerCase();
+            const rows = table.querySelectorAll('tbody tr');
+
+            rows.forEach(row => {
+                const email = row.cells[0].textContent.toLowerCase();
+                row.style.display = email.includes(searchTerm) ? '' : 'none';
+            });
+        });
+    });
+</script>
+{% endblock %}

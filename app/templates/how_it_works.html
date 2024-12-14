@@ -1,0 +1,51 @@
+{% extends 'base.html' %}
+
+{% block title %}How It Works{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <h1 class="mb-4">How It Works</h1>
+    <p>Welcome to our activity management app! Here's how you can make the most of it:</p>
+    
+    <h2 class="mt-4">1. Sign Up and Log In</h2>
+    <p>Create an account to get started. Once you're logged in, you can access all features of the app.</p>
+
+    <h2 class="mt-4">2. Link Your Strava Account</h2>
+    <p>
+        Connect your Strava account to import your activities automatically. 
+        This allows the app to calculate totals and let you climb the laddr!
+    </p>
+
+    <h2 class="mt-4">3. Earn points by exercising!</h2>
+    <p>
+        Keep exercising ! Exercising will earn you points and the more points you have, the greater chance you have to win the end of month raffle!
+    </p>    
+    <p>
+        <strong>Earning Points</strong>
+   
+            <ul>
+                <li><strong>Riding :</strong> Earn 0.1 points per kilometer hour (e.g. 20 kilometers at 30km/h, is 600 kilometer hours, so 60 points)</li>
+                <li><strong>Running :</strong> Earn 1 points per kilometer hour (e.g. 5 kilometers at 5 minutes per kilometer (12km/h), is 60 kilometer hours, so 60 points)</li>
+            </ul>
+    </p>   
+    <p>
+        <strong>Interacting with events earns your more points!</strong>
+        <ul>
+            <li><strong>Public Event :</strong> Check the schedule for public events! There is 1 schedule for all users, align your activities with these events for a 10x multiplier</li>
+            <li><strong>Personal Event :</strong> Activate yourself and all of your activities for 24hrs will receive a 3x multiplier</li>
+        </ul>
+    </p>    
+        
+    <h2 class="mt-4">4. Earn Bucks</h2>
+    <p>
+        Each week, you receive <strong>5 bucks</strong>, which you can use to schedule public events or for personal event activation. 
+        Plan your activities wisely to make the most of them!
+    </p>
+
+
+
+    <div class="text-center mt-5">
+        <a href="{{ url_for('main.index') }}" class="btn btn-primary">Go to Dashboard</a>
+    </div>
+</div>
+{% endblock %}

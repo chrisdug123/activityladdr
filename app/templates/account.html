@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+{% block title %}My Account{% endblock %}
+{% block content %}
+<h2 class="mt-5">Welcome, {{ user.first_name }} {{ user.last_name }}</h2>
+
+<p><strong>Bucks Balance:</strong> {{ user.bucks }} bucks</p>
+
+<!-- Private Event Section -->
+<div class="mt-4">
+    <h3>Private Event Activation</h3>
+    {% if private_event_active %}
+        <p class="text-success">
+            Private event is active! Time left: 
+            <span id="privateEventCountdown">{{ private_event_ends }}</span>
+        </p>
+    {% else %}
+        <button class="btn btn-primary" id="activateButton" {% if not can_activate %}disabled{% endif %}>
+            Activate Private Event
+        </button>
+        {% if not can_activate %}
+        <p class="text-muted">
+            Activation cooldown active. Time left: 
+            <span id="cooldownCountdown">{{ next_activation_time }}</span>
+        </p>
+        {% endif %}
+    {% endif %}
+</div>
+
+
+<!-- Monthly Activity Totals Section -->
+<h3 class="mt-5">Monthly Activity Totals</h3>
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Activity Type</th>
+            <th>Total Kilometers</th>
+            <th>Average Pace (km/h)</th>
+            <th>Average Multiplier</th>
+            <th>Total Points</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td>Running</td>
+            <td>{{ user.monthly_data.get('run', {}).get('distance', 0) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('run', {}).get('pace', 0) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('run', {}).get('avg_multiplier', 1) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('run', {}).get('points', 0) }}</td>
+        </tr>
+        <tr>
+            <td>Cycling</td>
+            <td>{{ user.monthly_data.get('ride', {}).get('distance', 0) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('ride', {}).get('pace', 0) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('ride', {}).get('avg_multiplier', 1) | round(2) }}</td>
+            <td>{{ user.monthly_data.get('ride', {}).get('points', 0) }}</td>
+        </tr>
+        
+    </tbody>
+</table>
+
+
+
+
+<!-- Data Refresh Button -->
+<div class="mt-4">
+    <h3>Refresh Data</h3>
+    <button class="btn btn-secondary" id="refreshDataButton">Refresh Data</button>
+    <p class="text-muted" id="refreshStatus" style="display: none;">Refreshing data...</p>
+</div>
+<div class="mt-4">
+    <h3>Linked Accounts</h3>
+    {% if linked_accounts %}
+        <p>Your Strava account is linked.</p>
+        <button class="btn btn-secondary me-2" id="refreshDataButton">Refresh Data</button>
+        <a href="{{ url_for('main.link_strava') }}" class="btn btn-warning">Relink Strava</a>
+    {% else %}
+        <a href="{{ url_for('main.link_strava') }}" class="btn btn-warning">Link Strava Account</a>
+    {% endif %}
+    <p class="text-muted" id="refreshStatus" style="display: none;">Refreshing data...</p>
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const activateButton = document.getElementById('activateButton');
+        const privateEventCountdown = document.getElementById('privateEventCountdown');
+        const cooldownCountdown = document.getElementById('cooldownCountdown');
+        const refreshDataButton = document.getElementById('refreshDataButton');
+        const refreshStatus = document.getElementById('refreshStatus');
+
+        // Function to update countdown timers
+        function updateCountdown(endTime, element) {
+            if (!endTime || endTime === "N/A") {
+                element.textContent = "N/A";
+                return;
+            }
+
+            const interval = setInterval(() => {
+                const now = new Date().getTime();
+                const distance = new Date(endTime).getTime() - now;
+
+                if (distance <= 0) {
+                    clearInterval(interval);
+                    element.textContent = "Expired";
+                } else {
+                    const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const seconds = Math.floor((distance % (1000 * 60)) / 1000);
+                    element.textContent = `${hours}h ${minutes}m ${seconds}s`;
+                }
+            }, 1000);
+        }
+
+        // Initialize countdowns
+        if (privateEventCountdown) {
+            updateCountdown(privateEventCountdown.textContent, privateEventCountdown);
+        }
+
+        if (cooldownCountdown) {
+            updateCountdown(cooldownCountdown.textContent, cooldownCountdown);
+        }
+
+        // Activate button handler
+        activateButton?.addEventListener('click', function () {
+            fetch('/activate-private-event', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload(); // Reload to update countdowns
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => console.error('Error activating private event:', error));
+        });
+
+        // Refresh data button handler
+        refreshDataButton?.addEventListener('click', function () {
+            refreshStatus.style.display = 'block'; // Show refreshing message
+            fetch('/refresh-data', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        location.reload(); // Reload to update refreshed data
+                    } else {
+                        alert(data.message);
+                    }
+                })
+                .catch(error => console.error('Error refreshing data:', error))
+                .finally(() => {
+                    refreshStatus.style.display = 'none'; // Hide refreshing message
+                });
+        });
+    });
+
+    document.getElementById('reset-private-event-btn').addEventListener('click', function () {
+        const feedbackElement = document.getElementById('reset-feedback');
+        
+        fetch('/reset-private-event', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                feedbackElement.textContent = data.message;
+                feedbackElement.classList.remove('text-danger');
+                feedbackElement.classList.add('text-success');
+                feedbackElement.style.display = 'block';
+            } else {
+                feedbackElement.textContent = data.message;
+                feedbackElement.classList.remove('text-success');
+                feedbackElement.classList.add('text-danger');
+                feedbackElement.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            feedbackElement.textContent = 'An error occurred. Please try again.';
+            feedbackElement.classList.remove('text-success');
+            feedbackElement.classList.add('text-danger');
+            feedbackElement.style.display = 'block';
+        });
+    });
+</script>
+
+{% endblock %}

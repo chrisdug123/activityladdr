@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+{% block title %}Create Event{% endblock %}
+{% block content %}
+<h2 class="mt-5">Create an Event</h2>
+
+<form method="POST" action="{{ url_for('main.events') }}">
+    <div class="mb-3">
+        <label for="event_type" class="form-label">Event Type</label>
+        <select id="event_type" name="event_type" class="form-select" required>
+            <option value="community">Community Event (10x Multiplier, 5 Bucks)</option>
+            <option value="personal">Personal Event (5x Multiplier, 3 Bucks)</option>
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="major_city" class="form-label">Major City</label>
+        <select id="major_city" name="major_city" class="form-select" required>
+            {% for city in cities %}
+            <option value="{{ city }}">{{ city }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="mb-3">
+        <label for="suburb" class="form-label">Suburb</label>
+        <input id="suburb" name="suburb" class="form-control" required>
+    </div>
+    <div class="mb-3">
+        <label for="date" class="form-label">Date</label>
+        <input id="date" name="date" type="date" class="form-control" required>
+    </div>
+    <div class="mb-3">
+        <label for="hour" class="form-label">Start Hour</label>
+        <select id="hour" name="hour" class="form-select" required>
+            {% for hour in range(0, 24, 3) %}
+            <option value="{{ hour }}">{{ hour }}:00 - {{ (hour + 3) % 24 }}:00</option>
+            {% endfor %}
+        </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Create Event</button>
+</form>
+
+
+<a href="{{ url_for('main.schedule') }}" class="btn btn-secondary mt-3">View Your Events</a>
+
+<script>
+    // Populate suburbs dynamically based on selected city
+    document.getElementById('major_city').addEventListener('change', function () {
+        const selectedCity = this.value;
+        const suburbDropdown = document.getElementById('suburb');
+
+        suburbDropdown.innerHTML = '<option value="" disabled selected>Select a suburb</option>';
+
+        if (selectedCity) {
+            fetch(`/suburbs/${selectedCity}`)
+                .then(response => response.json())
+                .then(data => {
+                    data.forEach(suburb => {
+                        const option = document.createElement('option');
+                        option.value = suburb;
+                        option.textContent = suburb;
+                        suburbDropdown.appendChild(option);
+                    });
+                })
+                .catch(error => console.error('Error fetching suburbs:', error));
+        }
+    });
+
+    // Populate valid dates (today and tomorrow) and their available time slots
+    document.addEventListener('DOMContentLoaded', function () {
+        const dateDropdown = document.getElementById('date');
+        const timeSlotDropdown = document.getElementById('hour');
+
+        fetch('/valid-dates')
+            .then(response => response.json())
+            .then(data => {
+                dateDropdown.innerHTML = '<option value="" disabled selected>Select a date</option>';
+                data.forEach(date => {
+                    const option = document.createElement('option');
+                    option.value = date.value;
+                    option.textContent = date.label;
+                    dateDropdown.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error fetching dates:', error));
+
+        // Update available time slots when a date is selected
+        dateDropdown.addEventListener('change', function () {
+            const selectedDate = this.value;
+
+            timeSlotDropdown.innerHTML = '<option value="" disabled selected>Select a time slot</option>';
+
+            if (selectedDate) {
+                fetch(`/available-timeslots?date=${encodeURIComponent(selectedDate)}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        data.forEach(slot => {
+                            const option = document.createElement('option');
+                            option.value = slot.hour;
+                            option.textContent = `${slot.start_time} - ${slot.end_time}`;
+                            timeSlotDropdown.appendChild(option);
+                        });
+                    })
+                    .catch(error => console.error('Error fetching available time slots:', error));
+            }
+        });
+    });
+</script>
+{% endblock %}
