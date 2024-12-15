@@ -20,6 +20,171 @@
         </tbody>
     </table>
 </div>
+<h3 class="mt-5">Countdown to End of the Month</h3>
+<p>At the end of the month, the wheel will be spun and winners will be announced!</p>
+<div id="countdown-timer" class="fs-4 fw-bold"></div>
+<h3 class="mt-5">Leaderboard Wheel</h3>
+<div class="wheel-container position-relative">
+    <canvas id="leaderboardWheel" width="400" height="400"></canvas>
+    <div class="wheel-pointer position-absolute" style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
+        <i class="fas fa-arrow-up fa-2x"></i>
+    </div>
+</div>
+
+<div class="mt-3">
+    <button id="spinWheelButton" class="btn btn-primary">Spin the Wheel</button>
+</div>
+
+<p id="winnerAnnouncement" class="mt-3 fs-5 text-success fw-bold"></p>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const labels = {{ chart_labels | safe }};
+        const data = {{ chart_data | safe }};
+        const colors = ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff', '#ff9f40', '#ff6347', '#4682b4'];
+        const totalPoints = data.reduce((sum, score) => sum + score, 0);
+
+        // Normalize the data to create proportional segments
+        const normalizedData = data.map(score => (score / totalPoints) * 360); // Convert to degrees
+
+        const canvas = document.getElementById('leaderboardWheel');
+        const ctx = canvas.getContext('2d');
+        const radius = canvas.width / 2;
+
+        let currentAngle = 0; // Start position
+        let spinAngle = 0; // Final spin angle
+        let spinning = false; // Lock wheel during spin
+
+        // Draw the wheel
+        function drawWheel() {
+            let startAngle = 0;
+            for (let i = 0; i < labels.length; i++) {
+                const sliceAngle = (data[i] / totalPoints) * 2 * Math.PI;
+                ctx.beginPath();
+                ctx.moveTo(radius, radius);
+                ctx.arc(radius, radius, radius, startAngle, startAngle + sliceAngle);
+                ctx.closePath();
+                ctx.fillStyle = colors[i % colors.length];
+                ctx.fill();
+
+                // Add label
+                const textAngle = startAngle + sliceAngle / 2;
+                ctx.save();
+                ctx.translate(
+                    radius + Math.cos(textAngle) * radius * 0.7,
+                    radius + Math.sin(textAngle) * radius * 0.7
+                );
+                ctx.rotate(textAngle);
+                ctx.fillStyle = "#fff";
+                ctx.font = "14px Arial";
+                ctx.fillText(labels[i], -ctx.measureText(labels[i]).width / 2, 0);
+                ctx.restore();
+
+                startAngle += sliceAngle;
+            }
+        }
+
+        drawWheel();
+
+        // Spin the wheel
+        document.getElementById('spinWheelButton').addEventListener('click', function () {
+            if (spinning) return; // Prevent multiple spins
+
+            spinning = true;
+            const spinDuration = 5000; // 5 seconds
+            const randomAngle = Math.random() * 360; // Random landing angle
+            spinAngle = 360 * 5 + randomAngle; // Spin 5 full rotations + random angle
+            const start = performance.now();
+
+            function animateSpin(time) {
+                const elapsed = time - start;
+                const progress = Math.min(elapsed / spinDuration, 1);
+                const easing = Math.pow(progress, 3); // Cubic easing for smooth spin
+                currentAngle = easing * spinAngle;
+
+                // Redraw the wheel with the new angle
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                ctx.save();
+                ctx.translate(radius, radius);
+                ctx.rotate((currentAngle * Math.PI) / 180);
+                ctx.translate(-radius, -radius);
+                drawWheel();
+                ctx.restore();
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateSpin);
+                } else {
+                    spinning = false;
+                    announceWinner(randomAngle);
+                }
+            }
+
+            requestAnimationFrame(animateSpin);
+        });
+
+        // Announce the winner
+        function announceWinner(angle) {
+            const cumulativeAngles = [];
+            let cumulative = 0;
+            for (const score of normalizedData) {
+                cumulative += score;
+                cumulativeAngles.push(cumulative);
+            }
+
+            const normalizedAngle = (360 - (angle % 360)) % 360; // Reverse spin direction and normalize to 0–360
+            const winnerIndex = cumulativeAngles.findIndex(total => normalizedAngle <= total);
+
+            const winner = labels[winnerIndex];
+            document.getElementById('winnerAnnouncement').textContent = `Congratulations, ${winner}! 🎉`;
+        }
+    });
+</script>
+
+<style>
+    .wheel-container {
+        position: relative;
+        width: 400px;
+        height: 400px;
+        margin: 0 auto;
+    }
+
+    .wheel-pointer {
+        width: 20px;
+        height: 20px;
+        text-align: center;
+    }
+</style>
+
+
+<script>
+    // Countdown logic
+    document.addEventListener('DOMContentLoaded', function () {
+        const countdownSeconds = {{ countdown | int }};  // Passed from the backend
+        const timerDisplay = document.getElementById('countdown-timer');
+        let secondsLeft = countdownSeconds;
+
+        function formatTime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secondsRemaining = seconds % 60;
+            return `${days}d ${hours}h ${minutes}m ${secondsRemaining}s`;
+        }
+
+        function updateTimer() {
+            if (secondsLeft > 0) {
+                timerDisplay.textContent = formatTime(secondsLeft);
+                secondsLeft -= 1;
+            } else {
+                timerDisplay.textContent = "Month has ended!";
+            }
+        }
+
+        updateTimer();  // Initialize
+        setInterval(updateTimer, 1000);  // Update every second
+    });
+</script>
 
 <script>
     // Add search functionality

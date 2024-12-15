@@ -136,12 +136,28 @@ def reset_private_event():
     db.session.commit()
 
     return jsonify({"success": True, "message": "Private event activation reset successfully."})
+
 @main.route('/leaderboard', methods=['GET'])
 def leaderboard():
-    # Fetch all users sorted by their overall points
     users = User.query.order_by(User.overall_points.desc()).all()
 
-    return render_template('leaderboard.html', users=users)
+    # Calculate countdown to end of the month
+    now = datetime.now()
+    first_day_next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
+    end_of_month = first_day_next_month - timedelta(seconds=1)
+    countdown = (end_of_month - now).total_seconds()  # In seconds
+
+    # Prepare data for the pie chart
+    chart_labels = [user.first_name + ' ' + user.last_name for user in users]
+    chart_data = [user.overall_points for user in users]
+
+    return render_template(
+        'leaderboard.html',
+        users=users,
+        countdown=countdown,
+        chart_labels=chart_labels,
+        chart_data=chart_data
+    )
 
 def calculate_monthly_totals(user_id):
     """Calculate and save monthly totals for the user."""
