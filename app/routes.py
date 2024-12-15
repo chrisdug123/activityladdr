@@ -6,7 +6,8 @@ from datetime import datetime, timedelta
 from math import radians, cos, sin, sqrt, atan2
 from pytz import timezone, utc
 from sqlalchemy import and_
-
+from datetime import datetime
+from dateutil.parser import isoparse
 
 BRISBANE_TZ = timezone('Australia/Brisbane')
 main = Blueprint('main', __name__)
@@ -145,7 +146,7 @@ def leaderboard():
     now = datetime.now()
     first_day_next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
     end_of_month = first_day_next_month - timedelta(seconds=1)
-    countdown = (end_of_month - now).total_seconds()  # In seconds
+    countdown = (end_of_month - now).total_seconds()
 
     # Prepare data for the pie chart
     chart_labels = [user.first_name + ' ' + user.last_name for user in users]
@@ -221,7 +222,8 @@ def calculate_monthly_totals(user_id):
             points=0
             # Default multiplier
             multiplier = 1
-            activity_start_time = datetime.fromisoformat(activity.get('start_date_local'))
+
+            activity_start_time = isoparse(activity.get('start_date_local'))
             activity_date = activity_start_time.date()
             activity_hour = activity_start_time.hour
             # Check for matching events
@@ -636,6 +638,7 @@ def activate_private_event():
             if user.last_activated.tzinfo is None
             else user.last_activated.astimezone(BRISBANE_TZ)
         )
+       
         next_activation_brisbane = last_activated_brisbane + timedelta(days=7)
 
         if now_brisbane < next_activation_brisbane:
@@ -753,14 +756,13 @@ def book_slot():
 
     data = request.json
 
-    # Extract and validate `date`
     date_string = data.get('date', '').strip()
     if not date_string:
         return jsonify({"success": False, "message": "Date is missing."}), 400
     try:
         date = datetime.strptime(date_string, '%Y-%m-%d').date()
     except ValueError:
-        return jsonify({"success": False, "message": f"Invalid date format: {date_string}. Expected format: YYYY-MM-DD."}), 400
+        return jsonify({"success": False, "message": "Invalid date format."}), 400
 
     # Extract and validate `hour`
     try:
@@ -995,7 +997,7 @@ def refresh_strava_token(user):
             data = response.json()
             user.strava_access_token = data['access_token']
             user.strava_refresh_token = data['refresh_token']
-            user.strava_expires_at = data['expires_at']
+            user.strava_expires_at = datetime.fromtimestamp(data['expires_at'], tz=utc)
             db.session.commit()
             return user.strava_access_token
         else:
@@ -1026,7 +1028,7 @@ def link_strava():
         f"{current_app.config['STRAVA_AUTH_URL']}?client_id={client_id}"
         f"&response_type=code&redirect_uri={redirect_uri}&scope={scope}"
     )
-
+    
     print(f"Redirecting to Strava Auth URL: {auth_url}")  # Debugging
 
     return redirect(auth_url)
