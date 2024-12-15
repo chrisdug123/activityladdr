@@ -999,6 +999,7 @@ def link_strava():
 
     # Dynamically fetch client_id from configuration
     client_id = current_app.config.get('STRAVA_CLIENT_ID')
+    print(f"Client ID is {client_id}")
     if not client_id:
         flash('Strava integration is not configured properly.', 'danger')
         return redirect(url_for('main.account'))
@@ -1023,6 +1024,8 @@ def strava_callback():
         return redirect(url_for('main.login'))
 
     code = request.args.get('code')
+    print(f"Code is {code}")
+    
     if not code:
         flash('Authorization failed. Please try again.', 'danger')
         return redirect(url_for('main.account'))
@@ -1030,6 +1033,9 @@ def strava_callback():
     client_id = current_app.config.get('STRAVA_CLIENT_ID')
     client_secret = current_app.config.get('STRAVA_CLIENT_SECRET')
     token_url = current_app.config.get('STRAVA_TOKEN_URL')
+    print(f"Client ID is {client_id}")
+    print(f"Client Secret is {client_secret}") 
+    print(f"Token url is {token_url}")
 
     if not client_id or not client_secret or not token_url:
         flash('Strava integration is not configured properly.', 'danger')
