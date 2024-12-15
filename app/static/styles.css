@@ -6,3 +6,22 @@ body {
     margin-top: 50px;
     max-width: 600px;
 }
+
+.btn-purple {
+    background-color: #6a0dad; /* Deep Purple */
+    color: white; /* Ensure text is readable */
+    border: none; /* Match Bootstrap button styles */
+}
+.btn-purple:hover {
+    background-color: #5a0ca5; /* Slightly darker shade on hover */
+}
+
+
+table {
+    white-space: nowrap; /* Prevent text wrapping */
+}
+
+th, td {
+    text-align: center; /* Center-align all text */
+    vertical-align: middle; /* Vertically center-align */
+}

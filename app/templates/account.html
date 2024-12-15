@@ -3,7 +3,42 @@
 {% block content %}
 <h2 class="mt-5">Welcome, {{ user.first_name }} {{ user.last_name }}</h2>
 
-<p><strong>Bucks Balance:</strong> {{ user.bucks }} bucks</p>
+<div class="bucks-countdown">
+    <h4>Your Bucks</h4>
+    <p>Current Bucks: {{ user.bucks }}</p>
+    {% if bucks_reset_time > 0 %}
+        <p>Next Bucks Regeneration in: <span id="bucks-timer"></span></p>
+    {% else %}
+        <p>Bucks are fully regenerated!</p>
+    {% endif %}
+</div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const countdownElement = document.getElementById('bucks-timer');
+        let timeLeft = {{ bucks_reset_time | default(0) }};
+
+        if (countdownElement && timeLeft > 0) {
+            const updateCountdown = () => {
+                const days = Math.floor(timeLeft / 86400);
+                const hours = Math.floor((timeLeft % 86400) / 3600);
+                const minutes = Math.floor((timeLeft % 3600) / 60);
+                const seconds = timeLeft % 60;
+
+                countdownElement.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+                if (timeLeft > 0) {
+                    timeLeft--;
+                } else {
+                    countdownElement.textContent = "Bucks have regenerated!";
+                }
+            };
+
+            updateCountdown();
+            setInterval(updateCountdown, 1000); // Update every second
+        }
+    });
+</script>
 
 <!-- Private Event Section -->
 <div class="mt-4">
@@ -102,10 +137,11 @@
                     clearInterval(interval);
                     element.textContent = "Expired";
                 } else {
+                    const days = Math.floor((distance % (1000 * 60 * 60 * 24*7)) / (1000 * 60 * 60*24));
                     const hours = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
                     const minutes = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
                     const seconds = Math.floor((distance % (1000 * 60)) / 1000);
-                    element.textContent = `${hours}h ${minutes}m ${seconds}s`;
+                    element.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
                 }
             }, 1000);
         }
@@ -183,6 +219,31 @@
             feedbackElement.classList.add('text-danger');
             feedbackElement.style.display = 'block';
         });
+    });
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const countdownElement = document.getElementById('bucks-timer');
+        let timeLeft = {{ bucks_reset_time | default(0) }};
+
+        if (countdownElement && timeLeft > 0) {
+            const updateCountdown = () => {
+                const days = Math.floor(timeLeft / 86400);
+                const hours = Math.floor((timeLeft % 86400) / 3600);
+                const minutes = Math.floor((timeLeft % 3600) / 60);
+                const seconds = timeLeft % 60;
+
+                countdownElement.textContent = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+                if (timeLeft > 0) {
+                    timeLeft--;
+                } else {
+                    countdownElement.textContent = "Bucks have regenerated!";
+                }
+            };
+
+            updateCountdown();
+            setInterval(updateCountdown, 1000); // Update every second
+        }
     });
 </script>
 

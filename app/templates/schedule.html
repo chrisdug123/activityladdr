@@ -1,12 +1,14 @@
 {% extends 'base.html' %}
 {% block title %}Schedule & Events{% endblock %}
+
 {% block content %}
 <h2 class="mt-5">Event Schedule</h2>
 
+<!-- City Selector -->
 <div class="mb-3">
     <form method="get" action="{{ url_for('main.schedule') }}">
-        <label for="major_city">Select a city:</label>
-        <select name="major_city" id="major_city" onchange="this.form.submit()">
+        <label for="major_city" class="form-label">Select a city:</label>
+        <select name="major_city" id="major_city" class="form-select" onchange="this.form.submit()">
             <option value="">-- Choose a city --</option>
             {% for city in cities %}
                 <option value="{{ city }}" {% if city == selected_city %}selected{% endif %}>{{ city }}</option>
@@ -15,84 +17,98 @@
     </form>
 </div>
 
-<div id="calendar">
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>Time</th> <!-- The first column header -->
-                {% for date in calendar.keys() %}
-                    <th>{{ date.strftime('%A, %d %B %Y') }}</th>
-                {% endfor %}
-            </tr>
-        </thead>
+<!-- Legend -->
+<div class="mb-3">
+    <strong>Legend:</strong>
+    <div class="d-flex align-items-center flex-wrap">
+        <div class="btn btn-success btn-sm me-2" style="pointer-events: none;">0 bucks</div>
+        <div class="btn btn-primary btn-sm me-2" style="pointer-events: none;">1 buck</div>
+        <div class="btn btn-info btn-sm me-2" style="pointer-events: none;">2 bucks</div>
+        <div class="btn btn-warning btn-sm me-2" style="pointer-events: none;">3 bucks</div>
+        <div class="btn btn-purple btn-sm me-2" style="pointer-events: none;">4 bucks</div>
+        <div class="btn btn-danger btn-sm" style="pointer-events: none;">5 bucks</div>
+    </div>
+</div>
+
+<!-- Schedule Table -->
+<div id="schedule" class="table-responsive">
+    <table class="table table-bordered table-hover">
+   <thead class="table-light text-center">
+    <tr>
+        <th style="width: 10%;">Time</th> <!-- Allocate a smaller width for the Time column -->
+        {% for date in calendar.keys() %}
+            <th style="width: {{ 90 / calendar|length }}%;">
+                {{ date.strftime('%a %d') }} <!-- Compact format -->
+            </th>
+        {% endfor %}
+    </tr>
+</thead>
+
+        
         <tbody>
-            {% for hour in range(0, 24, 3) %} <!-- Loop through each timeslot -->
+            {% for hour in range(0, 24, 3) %}
             <tr>
-                <td>{{ '%02d:00' | format(hour) }} - {{ '%02d:00' | format((hour + 3) % 24) }}</td> <!-- Timeslot in HH:MM format -->
+                <!-- Timeslot -->
+                <td class="text-center {% if hour == current_hour and today_date in calendar.keys() %}table-warning fw-bold{% endif %}">
+                    {{ hour % 12 or 12 }}{{ 'a' if hour < 12 else 'p' }}–{{ (hour + 3) % 12 or 12 }}{{ 'a' if (hour + 3) < 12 else 'p' }}
+                </td>
+                
+
+                <!-- Availability for Each Day -->
                 {% for date, times in calendar.items() %}
-                    <td>
-                        {% if hour in times %}
-                            {% set slot = times[hour] %}
-                            {% if slot.status == 'available' %}
-                                <button
-                                    class="btn btn-success btn-sm"
-                                    data-date="{{ date }}"
-                                    data-hour="{{ hour }}"
-                                    data-cost="{{ slot.cost }}"
-                                    data-bs-toggle="modal"
-                                    data-bs-target="#bookingModal">
-                                    Book ({{ slot.cost }} bucks)
-                                </button>
-                            {% elif slot.status == 'booked' %}
-                                <span class="badge bg-primary">Booked</span><br>
-                                <small>{{ slot.suburb }}</small>
-                            {% else %}
-                                <span class="badge bg-secondary">Unavailable</span>
-                            {% endif %}
+                <td>
+                    {% if hour in times %}
+                        {% set slot = times[hour] %}
+                        {% if slot.status == 'available' %}
+                            <!-- Assign button color based on specific cost -->
+                            <button
+                            class="btn {% if slot.cost == 0 %}btn-success
+                                        {% elif slot.cost == 1 %}btn-primary
+                                        {% elif slot.cost == 2 %}btn-info
+                                        {% elif slot.cost == 3 %}btn-warning
+                                        {% elif slot.cost == 4 %}btn-purple
+                                        {% elif slot.cost == 5 %}btn-danger{% endif %} btn-sm book-slot"
+                            data-date="{{ date }}"
+                            data-hour="{{ hour }}"
+                            data-cost="{{ slot.cost }}"
+                            data-bs-toggle="modal"
+                            data-bs-target="#bookingModal">
+                            Book
+                        </button>
+                        
+                        {% elif slot.status == 'booked' %}
+                            <span class="badge bg-primary">Booked</span><br>
+                            <small>{{ slot.suburb }}</small>
                         {% else %}
-                            <span class="badge bg-secondary">Unavailable</span>
+                            <span class="badge bg-secondary">Booked</span>
                         {% endif %}
-                    </td>
+                    {% else %}
+                        <span class="badge bg-secondary">Booked</span>
+                    {% endif %}
+                </td>
                 {% endfor %}
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    
 </div>
 
-<!-- Booking Modal -->
 <!-- Booking Modal -->
 <div id="bookingModal" class="modal fade" tabindex="-1" aria-labelledby="bookingModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="bookingModalLabel">Book Slot</h5>
+                <h5 class="modal-title" id="bookingModalLabel">Confirm Booking</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <form id="bookingForm">
-                    <input type="hidden" id="modalDate" name="date">
-                    <input type="hidden" id="modalHour" name="hour">
-
-                    <div class="mb-3">
-                        <label for="modalMajorCity" class="form-label">Major City</label>
-                        <select class="form-select" id="modalMajorCity" name="major_city" required>
-                            <option value="{}" selected disabled>Select a major city</option>
-                            {% for city in cities %}
-                            <option value="{{ city }}">{{ city }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-
-                    <div class="mb-3">
-                        <label for="modalSuburb" class="form-label">Suburb</label>
-                        <select class="form-select" id="modalSuburb" name="suburb" required>
-                            <option value="" selected disabled>Select a suburb</option>
-                        </select>
-                    </div>
-                    <p>Cost: <span id="bookingCost">0</span> bucks</p>
-
+                    <p>Booking slot:</p>
+                    <p>Date: <span id="modalDate"></span></p>
+                    <p>Time: <span id="modalTime"></span></p>
+                    <p>Cost: <span id="bookingCost"></span> bucks</p>
+                    <input type="hidden" id="modalDateInput" name="date">
+                    <input type="hidden" id="modalHourInput" name="hour">
                 </form>
             </div>
             <div class="modal-footer">
@@ -105,46 +121,30 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        const modal = new bootstrap.Modal(document.getElementById('bookingModal'));
-        const bookingForm = document.getElementById('bookingForm');
-        const majorCityDropdown = document.getElementById('modalMajorCity');
-        const suburbDropdown = document.getElementById('modalSuburb');
-
+        // Handle slot booking
         document.querySelectorAll('.book-slot').forEach(button => {
             button.addEventListener('click', function () {
-                document.getElementById('modalDate').value = this.getAttribute('data-date');
-                document.getElementById('modalHour').value = this.getAttribute('data-hour');
-                modal.show();
+                const date = this.getAttribute('data-date');
+                const hour = this.getAttribute('data-hour');
+                const cost = this.getAttribute('data-cost');
+
+                // Update modal with selected slot info
+                document.getElementById('modalDate').textContent = date;
+                document.getElementById('modalTime').textContent = `${hour}:00 - ${(parseInt(hour) + 3) % 24}:00`;
+                document.getElementById('bookingCost').textContent = cost;
+
+                // Update hidden inputs
+                document.getElementById('modalDateInput').value = date;
+                document.getElementById('modalHourInput').value = hour;
             });
         });
 
-        majorCityDropdown.addEventListener('change', function () {
-            const selectedCity = this.value;
-
-            // Clear existing suburbs
-            suburbDropdown.innerHTML = '<option value="" selected disabled>Select a suburb</option>';
-
-            // Fetch suburbs for the selected city
-            fetch(`/suburbs/${selectedCity}`)
-                .then(response => response.json())
-                .then(data => {
-                    data.forEach(suburb => {
-                        const option = document.createElement('option');
-                        option.value = suburb;
-                        option.textContent = suburb;
-                        suburbDropdown.appendChild(option);
-                    });
-                })
-                .catch(error => console.error('Error fetching suburbs:', error));
-        });
-
+        // Confirm booking
         document.getElementById('confirmBooking').addEventListener('click', function () {
-            const formData = new FormData(bookingForm);
+            const formData = new FormData(document.getElementById('bookingForm'));
             const bookingData = {
                 date: formData.get('date'),
                 hour: formData.get('hour'),
-                major_city: formData.get('major_city'),
-                suburb: formData.get('suburb')
             };
 
             fetch(`/book-slot`, {
@@ -156,7 +156,7 @@
             .then(data => {
                 if (data.success) {
                     alert('Slot booked successfully!');
-                    location.reload(); // Reload to update the calendar
+                    location.reload(); // Reload to update the schedule
                 } else {
                     alert('Error booking slot: ' + data.message);
                 }
@@ -164,18 +164,5 @@
             .catch(error => console.error('Error booking slot:', error));
         });
     });
-
-    document.querySelectorAll('button[data-bs-target="#bookingModal"]').forEach((button) => {
-    button.addEventListener('click', (e) => {
-        const date = button.dataset.date;
-        const hour = button.dataset.hour;
-        const cost = button.dataset.cost;
-
-        document.querySelector('#bookingForm input[name="date"]').value = date;
-        document.querySelector('#bookingForm input[name="hour"]').value = hour;
-        document.querySelector('#bookingCost').textContent = cost;
-    });
-});
-
 </script>
 {% endblock %}

@@ -219,7 +219,7 @@ def calculate_monthly_totals(user_id):
                         # For private events, match by timestamp only
                         if  (event.date == activity_date and event.start_hour <= activity_hour) or(activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
                             
-                            multiplier = 10
+                            multiplier = 3
                             matched_event = event
                             break
                         if matched_event:
@@ -248,7 +248,7 @@ def calculate_monthly_totals(user_id):
                                 continue
                             distance = haversine(lat, lon, event.latitude, event.longitude)
                             if distance <= event.radius:
-                                multiplier = 3
+                                multiplier = 10
                                 matched_event = event
                                 break
                         
@@ -287,7 +287,7 @@ def calculate_monthly_totals(user_id):
                     totals[activity_type]['avg_multiplier'] = totals[activity_type]['points'] / (totals[activity_type]['pace']*totals[activity_type]['distance'])  # Average multiplier
 
         # Save to user model
-        user.monthly_data = totals
+        #user.monthly_data = totals
         user.overall_points=overall_points
         db.session.commit()
         print(f"user overall points {user.overall_points}")
@@ -537,9 +537,23 @@ def account():
     can_activate = user.can_activate()
     private_event_ends = user.private_event_ends.astimezone(BRISBANE_TZ).isoformat() if user.private_event_ends else None
     next_activation_time = (user.last_activated + timedelta(days=7)).astimezone(BRISBANE_TZ).isoformat() if user.last_activated else None
-
-    # Activity totals: Load monthly_data or use defaults if unavailable
-    totals = calculate_monthly_totals(user.id) if user.strava_access_token else user.monthly_data
+    
+        # Calculate bucks regeneration countdown
+    bucks_reset_time = None
+    if user.last_bucks_update:
+        # Calculate next regeneration time
+        next_regeneration_time = user.last_bucks_update + timedelta(weeks=1)
+        now_utc = datetime.utcnow()
+        if next_regeneration_time > now_utc:
+            bucks_reset_time = int((next_regeneration_time - now_utc).total_seconds())  # Time left in seconds
+        else:
+            bucks_reset_time = 0  # Bucks should already be regenerated
+    print(bucks_reset_time)
+    # Load cached monthly_data directly from the user model
+    totals = user.monthly_data or {
+        'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
+        'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
+    }
 
     return render_template(
         'account.html',
@@ -548,9 +562,9 @@ def account():
         can_activate=can_activate,
         private_event_ends=private_event_ends,
         next_activation_time=next_activation_time,
+        bucks_reset_time=bucks_reset_time,
         totals=totals
     )
-
 
 
 
@@ -561,10 +575,18 @@ def refresh_data():
         return jsonify({"success": False, "message": "Login required"}), 403
 
     user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({"success": False, "message": "User not found."}), 404
 
     try:
-        # Recalculate monthly totals
+        # Recalculate monthly totals and update user data
         monthly_totals = calculate_monthly_totals(user_id)
+        user.monthly_data = monthly_totals  # Cache the new totals
+        user.monthly_last_updated = datetime.utcnow()  # Track when it was last updated
+        db.session.commit()
+
         return jsonify({"success": True, "message": "Monthly totals refreshed successfully!", "totals": monthly_totals})
     except Exception as e:
         print(f"Error refreshing monthly totals: {e}")
@@ -738,8 +760,8 @@ def book_slot():
 
     # Check if the user has enough bucks
     user = User.query.get(user_id)
-    #if user.bucks < cost:
-    #    return jsonify({"success": False, "message": f"Insufficient bucks. You need {cost} bucks."}), 400
+    if user.bucks < cost:
+        return jsonify({"success": False, "message": f"Insufficient bucks. You need {cost} bucks."}), 400
 
     # Deduct bucks and create the event
     user.bucks -= cost

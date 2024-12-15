@@ -39,7 +39,7 @@ class User(db.Model):
     def regenerate_bucks(self):
         """Regenerates bucks if a week has passed since the last update."""
         if not self.last_bucks_update or (datetime.utcnow() - self.last_bucks_update) >= timedelta(weeks=1):
-            self.bucks = 10  # Reset to 5 bucks
+            self.bucks = 5  # Reset to 5 bucks
             self.last_bucks_update = datetime.utcnow()
 
     def can_activate(self):
