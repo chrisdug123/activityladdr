@@ -13,10 +13,11 @@ main = Blueprint('main', __name__)
 city_suburbs = {
     "Sydney": ["Parramatta", "Manly", "Bondi", "Blacktown", "Chatswood", "Liverpool", "Penrith", "Newtown", "Surry Hills", "Castle Hill"],
     "Melbourne": ["St Kilda", "Richmond", "Carlton", "Footscray", "Docklands", "South Yarra", "Fitzroy", "Collingwood", "Hawthorn", "Brunswick"],
-    "Brisbane": ["South Brisbane", "Fortitude Valley", "Toowong", "Sunnybank", "Kangaroo Point", "Spring Hill", "Indooroopilly", "Chermside", "Carindale", "Mount Gravatt","Bridgeman Downs"],
+    "Brisbane": ["South Brisbane", "Fortitude Valley", "Toowong", "Sunnybank", "Kangaroo Point", "Spring Hill", "Indooroopilly", "Chermside", "Carindale", "Mount Gravatt","Bridgeman Downs","Newstead","Brisbane City"],
     "Perth": ["Fremantle", "Cottesloe", "Subiaco", "Joondalup", "Scarborough", "Claremont", "Northbridge", "Victoria Park", "Leederville", "Midland"],
     "Adelaide": ["Glenelg", "North Adelaide", "Norwood", "Burnside", "Prospect", "Unley", "Semaphore", "Henley Beach", "Mawson Lakes", "Tea Tree Gully"],
 }
+
 
 CITY_TIMEZONES = {
     "Sydney": timezone("Australia/Sydney"),
@@ -25,6 +26,7 @@ CITY_TIMEZONES = {
     "Perth": timezone("Australia/Perth"),
     "Adelaide": timezone("Australia/Adelaide"),
 }
+
 
 def get_coordinates(city, suburb):
     """Fetch latitude and longitude for a given city and suburb using OpenCage Geocoder."""
@@ -228,6 +230,9 @@ def calculate_monthly_totals(user_id):
                             break
 
                     elif event.event_type == 'public':
+                        print("checking public event")
+                        print(f"event start date {event.date}, activity date {activity_date}, event end date {event.date+ timedelta(hours=24)}")
+                        #
                         event_tz = CITY_TIMEZONES[event.major_city]
                         event_start_time = event_tz.localize(datetime.combine(event.date, datetime.min.time())) + timedelta(hours=event.start_hour)
                         event_end_time = event_start_time + timedelta(hours=3)
@@ -689,7 +694,7 @@ def schedule():
 
     # Limit calendar to 7 days
     calendar = {}
-    for offset in range(7):  # Show only the next 7 days
+    for offset in range(5):  # Show only the next 7 days
         date = today_city + timedelta(days=offset)
         calendar[date] = {}
 
@@ -724,7 +729,6 @@ def schedule():
         selected_city=major_city_filter
     )
 
-
 @main.route('/book-slot', methods=['POST'])
 def book_slot():
     """Book a public slot through the calendar."""
@@ -732,34 +736,62 @@ def book_slot():
         return jsonify({"success": False, "message": "Login required"}), 403
 
     data = request.json
-    date = datetime.strptime(data['date'], '%Y-%m-%d').date()
-    hour = int(data['hour'])
+
+    # Extract and validate `date`
+    date_string = data.get('date', '').strip()
+    if not date_string:
+        return jsonify({"success": False, "message": "Date is missing."}), 400
+    try:
+        date = datetime.strptime(date_string, '%Y-%m-%d').date()
+    except ValueError:
+        return jsonify({"success": False, "message": f"Invalid date format: {date_string}. Expected format: YYYY-MM-DD."}), 400
+
+    # Extract and validate `hour`
+    try:
+        hour = int(data.get('hour', -1))  # Default to an invalid hour (-1)
+        if hour not in range(0, 24, 3):  # Only valid 3-hour slots (e.g., 0, 3, 6, ..., 21)
+            raise ValueError
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "message": "Invalid or missing hour. Must be 0, 3, 6, ..., 21."}), 400
+
+    # Extract other fields
     major_city = data.get('major_city')
     suburb = data.get('suburb')
     user_id = session['user_id']
 
     if not major_city or major_city not in CITY_TIMEZONES:
-        return jsonify({"success": False, "message": "Invalid major city"}), 400
+        return jsonify({"success": False, "message": "Invalid or missing major city."}), 400
 
+    if not suburb:
+        return jsonify({"success": False, "message": "Suburb is missing."}), 400
+
+    # Calculate timezone-aware current date and time
     city_tz = CITY_TIMEZONES[major_city]
     now_utc = datetime.utcnow()
     now_city = utc.localize(now_utc).astimezone(city_tz)
     today_city = now_city.date()
 
-    # Calculate cost
+    # Calculate the cost based on days ahead
     days_ahead = (date - today_city).days
     cost = 0 if days_ahead <= 1 else days_ahead - 1
 
-    # Validate time
+    latitude, longitude = get_coordinates(major_city, suburb)
+    if latitude is None or longitude is None:
+        flash('Unable to fetch coordinates for the location. Please try again.', 'danger')
+        return redirect(url_for('main.events'))
+    # Validate the selected date and time
     if date < today_city or (date == today_city and hour + 3 <= now_city.hour):
-        return jsonify({"success": False, "message": "Invalid date or time"}), 400
+        return jsonify({"success": False, "message": "Invalid date or time."}), 400
 
-    # Check if the slot is already booked for the same city
+    # Check if the slot is already booked
     if Event.query.filter_by(date=date, start_hour=hour, major_city=major_city).first():
-        return jsonify({"success": False, "message": "Slot already booked in this city"}), 400
+        return jsonify({"success": False, "message": "Slot already booked in this city."}), 400
 
-    # Check if the user has enough bucks
+    # Fetch the user and validate bucks
     user = User.query.get(user_id)
+    if user is None:
+        return jsonify({"success": False, "message": "User not found."}), 404
+
     if user.bucks < cost:
         return jsonify({"success": False, "message": f"Insufficient bucks. You need {cost} bucks."}), 400
 
@@ -771,12 +803,15 @@ def book_slot():
         suburb=suburb,
         date=date,
         start_hour=hour,
-        event_type='public'  # Mark as a public event
+        event_type='public',
+        latitude=latitude,
+        longitude=longitude
     )
     db.session.add(new_event)
     db.session.commit()
 
-    return jsonify({"success": True})
+    return jsonify({"success": True, "message": "Slot booked successfully!"})
+
 
 @main.route('/events', methods=['GET', 'POST'])
 def events():

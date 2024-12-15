@@ -33,26 +33,21 @@
 <!-- Schedule Table -->
 <div id="schedule" class="table-responsive">
     <table class="table table-bordered table-hover">
-   <thead class="table-light text-center">
-    <tr>
-        <th style="width: 10%;">Time</th> <!-- Allocate a smaller width for the Time column -->
-        {% for date in calendar.keys() %}
-            <th style="width: {{ 90 / calendar|length }}%;">
-                {{ date.strftime('%a %d') }} <!-- Compact format -->
-            </th>
-        {% endfor %}
-    </tr>
-</thead>
-
-        
+        <thead class="table-light text-center">
+            <tr>
+                <th>Time</th>
+                {% for date in calendar.keys() %}
+                    <th>{{ date.strftime('%a %d') }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
         <tbody>
             {% for hour in range(0, 24, 3) %}
             <tr>
                 <!-- Timeslot -->
-                <td class="text-center {% if hour == current_hour and today_date in calendar.keys() %}table-warning fw-bold{% endif %}">
-                    {{ hour % 12 or 12 }}{{ 'a' if hour < 12 else 'p' }}–{{ (hour + 3) % 12 or 12 }}{{ 'a' if (hour + 3) < 12 else 'p' }}
+                <td class="text-center">
+                    {{ hour % 12 or 12 }}{{ 'am' if hour < 12 else 'pm' }}–{{ (hour + 3) % 12 or 12 }}{{ 'am' if (hour + 3) < 12 else 'pm' }}
                 </td>
-                
 
                 <!-- Availability for Each Day -->
                 {% for date, times in calendar.items() %}
@@ -60,30 +55,28 @@
                     {% if hour in times %}
                         {% set slot = times[hour] %}
                         {% if slot.status == 'available' %}
-                            <!-- Assign button color based on specific cost -->
                             <button
-                            class="btn {% if slot.cost == 0 %}btn-success
-                                        {% elif slot.cost == 1 %}btn-primary
-                                        {% elif slot.cost == 2 %}btn-info
-                                        {% elif slot.cost == 3 %}btn-warning
-                                        {% elif slot.cost == 4 %}btn-purple
-                                        {% elif slot.cost == 5 %}btn-danger{% endif %} btn-sm book-slot"
-                            data-date="{{ date }}"
-                            data-hour="{{ hour }}"
-                            data-cost="{{ slot.cost }}"
-                            data-bs-toggle="modal"
-                            data-bs-target="#bookingModal">
-                            Book
-                        </button>
-                        
+                                class="btn {% if slot.cost == 0 %}btn-success
+                                            {% elif slot.cost == 1 %}btn-primary
+                                            {% elif slot.cost == 2 %}btn-info
+                                            {% elif slot.cost == 3 %}btn-warning
+                                            {% elif slot.cost == 4 %}btn-purple
+                                            {% elif slot.cost == 5 %}btn-danger{% endif %} btn-sm book-slot"
+                                data-date="{{ date }}"
+                                data-hour="{{ hour }}"
+                                data-cost="{{ slot.cost }}"
+                                data-bs-toggle="modal"
+                                data-bs-target="#bookingModal">
+                                Book
+                            </button>
                         {% elif slot.status == 'booked' %}
                             <span class="badge bg-primary">Booked</span><br>
                             <small>{{ slot.suburb }}</small>
                         {% else %}
-                            <span class="badge bg-secondary">Booked</span>
+                            <span class="badge bg-secondary">Unavailable</span>
                         {% endif %}
                     {% else %}
-                        <span class="badge bg-secondary">Booked</span>
+                        <span class="badge bg-secondary">Unavailable</span>
                     {% endif %}
                 </td>
                 {% endfor %}
@@ -103,12 +96,25 @@
             </div>
             <div class="modal-body">
                 <form id="bookingForm">
-                    <p>Booking slot:</p>
-                    <p>Date: <span id="modalDate"></span></p>
-                    <p>Time: <span id="modalTime"></span></p>
-                    <p>Cost: <span id="bookingCost"></span> bucks</p>
                     <input type="hidden" id="modalDateInput" name="date">
                     <input type="hidden" id="modalHourInput" name="hour">
+
+                    <div class="mb-3">
+                        <label for="modalMajorCity" class="form-label">Major City</label>
+                        <select class="form-select" id="modalMajorCity" name="major_city" required>
+                            <option value="" selected disabled>Select a major city</option>
+                            {% for city in cities %}
+                                <option value="{{ city }}">{{ city }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="modalSuburb" class="form-label">Suburb</label>
+                        <select class="form-select" id="modalSuburb" name="suburb" required>
+                            <option value="" selected disabled>Select a suburb</option>
+                        </select>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -120,49 +126,61 @@
 </div>
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Handle slot booking
-        document.querySelectorAll('.book-slot').forEach(button => {
-            button.addEventListener('click', function () {
-                const date = this.getAttribute('data-date');
-                const hour = this.getAttribute('data-hour');
-                const cost = this.getAttribute('data-cost');
+document.addEventListener('DOMContentLoaded', function () {
+    // Suburb Dropdown Logic
+    const majorCityDropdown = document.getElementById('modalMajorCity');
+    const suburbDropdown = document.getElementById('modalSuburb');
 
-                // Update modal with selected slot info
-                document.getElementById('modalDate').textContent = date;
-                document.getElementById('modalTime').textContent = `${hour}:00 - ${(parseInt(hour) + 3) % 24}:00`;
-                document.getElementById('bookingCost').textContent = cost;
-
-                // Update hidden inputs
-                document.getElementById('modalDateInput').value = date;
-                document.getElementById('modalHourInput').value = hour;
-            });
-        });
-
-        // Confirm booking
-        document.getElementById('confirmBooking').addEventListener('click', function () {
-            const formData = new FormData(document.getElementById('bookingForm'));
-            const bookingData = {
-                date: formData.get('date'),
-                hour: formData.get('hour'),
-            };
-
-            fetch(`/book-slot`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(bookingData)
-            })
+    majorCityDropdown.addEventListener('change', function () {
+        const selectedCity = this.value;
+        suburbDropdown.innerHTML = '<option value="" selected disabled>Select a suburb</option>';
+        fetch(`/suburbs/${selectedCity}`)
             .then(response => response.json())
             .then(data => {
-                if (data.success) {
-                    alert('Slot booked successfully!');
-                    location.reload(); // Reload to update the schedule
-                } else {
-                    alert('Error booking slot: ' + data.message);
-                }
+                data.forEach(suburb => {
+                    const option = document.createElement('option');
+                    option.value = suburb;
+                    option.textContent = suburb;
+                    suburbDropdown.appendChild(option);
+                });
             })
-            .catch(error => console.error('Error booking slot:', error));
+            .catch(error => console.error('Error fetching suburbs:', error));
+    });
+
+    // Populate Modal Inputs
+    document.querySelectorAll('.book-slot').forEach(button => {
+        button.addEventListener('click', function () {
+            document.getElementById('modalDateInput').value = this.getAttribute('data-date');
+            document.getElementById('modalHourInput').value = this.getAttribute('data-hour');
         });
     });
+
+    // Confirm Booking
+    document.getElementById('confirmBooking').addEventListener('click', function () {
+        const formData = new FormData(document.getElementById('bookingForm'));
+        const bookingData = {
+            date: formData.get('date'),
+            hour: formData.get('hour'),
+            major_city: formData.get('major_city'),
+            suburb: formData.get('suburb')
+        };
+
+        fetch(`/book-slot`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(bookingData)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                alert('Slot booked successfully!');
+                location.reload();
+            } else {
+                alert('Error booking slot: ' + data.message);
+            }
+        })
+        .catch(error => console.error('Error booking slot:', error));
+    });
+});
 </script>
 {% endblock %}
