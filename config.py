@@ -2,8 +2,15 @@ import os
 
 class Config:
     SECRET_KEY = 'your_secret_key_here'
+
+    #below is dev db
     SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+
+
+    #below is prod db
+    #SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr.db'
+    #SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Strava API Credentials
     STRAVA_CLIENT_ID = '107088'  # Replace with your individual Client ID
