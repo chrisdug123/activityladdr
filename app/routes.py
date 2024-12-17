@@ -722,17 +722,12 @@ def schedule():
 
     # Build calendar
     calendar = {}
-    for offset in range(5):  # Next 5 days
+    for offset in range(4):  # Next 5 days
         date = today + timedelta(days=offset)
         calendar[date] = {}
 
         for hour in valid_times:
-            # Skip past timeslots for today in the selected state
-            if date == today and hour + 3 <= current_hour:
-                calendar[date][hour] = {'status': 'unavailable'}
-                continue
-
-            # Check if the time slot is booked
+            # Check if the slot is booked
             booked_event = next((e for e in events if e.date == date and e.start_hour == hour), None)
             if booked_event:
                 calendar[date][hour] = {
@@ -741,14 +736,18 @@ def schedule():
                     'username': User.query.get(booked_event.user_id).username
                 }
             else:
-                # Slot is available: calculate cost based on days ahead
-                days_ahead = (date - today).days
-                cost = 0 if days_ahead <= 1 else min(days_ahead - 1, 5)  # Cap cost at 5 bucks
+                # Mark slots as unavailable only if they are past and not booked
+                if date == today and hour + 3 <= current_hour:
+                    calendar[date][hour] = {'status': 'unavailable'}
+                else:
+                    # Slot is available: calculate cost based on days ahead
+                    days_ahead = (date - today).days
+                    cost = 0 if days_ahead <= 1 else min(days_ahead - 1, 5)  # Cap cost at 5 bucks
 
-                calendar[date][hour] = {
-                    'status': 'available',
-                    'cost': cost
-                }
+                    calendar[date][hour] = {
+                        'status': 'available',
+                        'cost': cost
+                    }
 
     return render_template(
         'schedule.html',
