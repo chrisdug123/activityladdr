@@ -61,15 +61,14 @@
     {% endif %}
 </div>
 
-
-<!-- Monthly Activity Totals Section -->
-<h3 class="mt-5">Monthly Activity Totals</h3>
-<table class="table table-striped">
+<h3>Monthly Summary</h3>
+<table class="table table-bordered">
     <thead>
         <tr>
             <th>Activity Type</th>
-            <th>Total Kilometers</th>
-            <th>Average Pace (km/h)</th>
+            <th>Total Distance (km)</th>
+            <th>Total Time (hours)</th>
+            <th>Number of Activities</th>
             <th>Average Multiplier</th>
             <th>Total Points</th>
         </tr>
@@ -77,21 +76,23 @@
     <tbody>
         <tr>
             <td>Running</td>
-            <td>{{ user.monthly_data.get('run', {}).get('distance', 0) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('run', {}).get('pace', 0) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('run', {}).get('avg_multiplier', 1) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('run', {}).get('points', 0) }}</td>
+            <td>{{ totals.run.distance | round(2) }}</td>
+            <td>{{ totals.run.time | round(2) }}</td>
+            <td>{{ totals.run.count }}</td>
+            <td>{{ totals.run.avg_multiplier | round(2) }}</td>
+            <td>{{ totals.run.points }}</td>
         </tr>
         <tr>
-            <td>Cycling</td>
-            <td>{{ user.monthly_data.get('ride', {}).get('distance', 0) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('ride', {}).get('pace', 0) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('ride', {}).get('avg_multiplier', 1) | round(2) }}</td>
-            <td>{{ user.monthly_data.get('ride', {}).get('points', 0) }}</td>
+            <td>Riding</td>
+            <td>{{ totals.ride.distance | round(2) }}</td>
+            <td>{{ totals.ride.time | round(2) }}</td>
+            <td>{{ totals.ride.count }}</td>
+            <td>{{ totals.ride.avg_multiplier | round(2) }}</td>
+            <td>{{ totals.ride.points }}</td>
         </tr>
-        
     </tbody>
 </table>
+
 
 
 

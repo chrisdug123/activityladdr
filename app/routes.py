@@ -127,13 +127,6 @@ def check_event_interactions(activity_id, access_token, buffer_km=5):
     print(f"No interaction for Activity {activity_id}")
     return False  # No interaction
 
-@main.route('/all-events', methods=['GET'])
-def all_events():
-    """Temporary route to display all events."""
-    events = Event.query.all()  # Fetch all events from the database
-
-    # Render a template to display the events in a table
-    return render_template('all_events.html', events=events)
 
 def get_activity_streams(activity_id, access_token):
     url = f'https://www.strava.com/api/v3/activities/{activity_id}/streams'
@@ -192,43 +185,32 @@ def calculate_monthly_totals(user_id):
     if not user:
         print(f"User with ID {user_id} not found.")
         return {
-            'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-            'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
+            'run': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+            'ride': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
         }
 
     access_token = user.strava_access_token
     if not access_token:
         print("No Strava access token found for the user.")
-        return {
-            'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-            'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-        }
+        return {}
 
     activities_url = 'https://www.strava.com/api/v3/athlete/activities'
     headers = {'Authorization': f'Bearer {access_token}'}
 
-    # Fetch activities for the current month
     now = datetime.now(BRISBANE_TZ)
     start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
     start_timestamp = int(start_of_month.timestamp())
-    end_of_month = (start_of_month + timedelta(days=31)).replace(day=1)  # First day of next month
 
-    events = Event.query.filter(
-        and_(Event.date >= start_of_month.date(), Event.date < end_of_month.date())
-    ).all()
-    # Initialize totals
-     # Initialize totals
+    # Fetch all events for this month
+    events = Event.query.filter(Event.date >= start_of_month.date()).all()
+
+    # Totals initialization
     totals = {
-        'run': {'distance': 0, 'pace': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
-        'ride': {'distance': 0, 'pace': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
+        'run': {'distance': 0, 'time': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
+        'ride': {'distance': 0, 'time': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
     }
-
-    if user.monthly_data is None:
-        user.monthly_data = {
-            'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-            'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-            }
     overall_points = 0
+
     try:
         response = requests.get(activities_url, headers=headers, params={'after': start_timestamp})
         if response.status_code != 200:
@@ -236,115 +218,112 @@ def calculate_monthly_totals(user_id):
             return totals
 
         activities = response.json()
-        if not activities:
-            print("No activities found for this user.")
-            return totals
-
         for activity in activities:
+            # Determine activity type
             activity_type = 'run' if activity['type'] == 'Run' else 'ride'
-            distance_km = activity.get('distance', 0) / 1000  # Convert meters to kilometers
-            moving_time_hr = activity.get('moving_time', 0) / 3600  # Convert seconds to hours
-            pace = distance_km / moving_time_hr if moving_time_hr > 0 else 0
-            points=0
-            # Default multiplier
-            multiplier = 1
+            distance_km = activity.get('distance', 0) / 1000  # Convert to kilometers
+            time_hr = activity.get('moving_time', 0) / 3600  # Convert moving time to hours
+            if distance_km == 0 or time_hr == 0:
+                continue  # Skip invalid activities
 
+            pace = distance_km / time_hr if time_hr > 0 else 0  # Pace = Distance / Time
+            multiplier = 1  # Default multiplier
+            matched_event = None
             activity_start_time = isoparse(activity.get('start_date_local'))
             activity_date = activity_start_time.date()
             activity_hour = activity_start_time.hour
-            # Check for matching events
-            matched_event = None
+
+            # Fetch activity GPS data for location matching
             latlng_stream = get_activity_streams(activity['id'], access_token)
-            #print(latlng_stream)
+
+            # Check for event interactions
             if latlng_stream and 'latlng' in latlng_stream:
                 for event in events:
-                    
                     if event.event_type == 'private':
-                        print("checking private event")
-                        print(f"event start date {event.date}, activity date {activity_date}, event end date {event.date+ timedelta(hours=24)}")
-                        # For private events, match by timestamp only
-                        if  (event.date == activity_date and event.start_hour <= activity_hour) or(activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
-                            
+                        if (event.date == activity_date and event.start_hour <= activity_hour) or \
+                           (activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
                             multiplier = 3
                             matched_event = event
                             break
-                        if matched_event:
-                            print("Private event matched")
-                            print(f"Activity {activity['id']} matched event type: {event.event_type} multiplier: {multiplier}")
-                            break
-
                     elif event.event_type == 'public':
-                        print("checking public event")
-                        print(f"event start date {event.date}, activity date {activity_date}, event end date {event.date+ timedelta(hours=24)}")
-                        #
-                        event_tz = CITY_TIMEZONES[event.major_city]
+                        event_tz = timezone(STATE_TIMEZONES.get(event.major_city, "Australia/Brisbane"))
                         event_start_time = event_tz.localize(datetime.combine(event.date, datetime.min.time())) + timedelta(hours=event.start_hour)
                         event_end_time = event_start_time + timedelta(hours=3)
-                        # For public events, match by time and location
-                        
-                        if event.latitude is None or event.longitude is None:
-                            print(f"Skipping Event {event.id} due to missing coordinates: latitude={event.latitude}, longitude={event.longitude}")
-                            continue
-                        if event.date != activity_date:
-                            continue
-                        if not (event_start_time <= activity_hour < event_end_time):
-                            continue
 
-                        for point in latlng_stream['latlng']['data']:
-                            print(f"Event and Activity date and time match, checking location")
-                            lat, lon = point
-                            if lat is None or lon is None:
-                                continue
-                            distance = haversine(lat, lon, event.latitude, event.longitude)
-                            if distance <= event.radius:
-                                multiplier = 10
-                                matched_event = event
-                                break
-                        
+                        if event.date == activity_date and event_start_time.hour <= activity_hour < event_end_time.hour:
+                            for point in latlng_stream['latlng']['data']:
+                                lat, lon = point
+                                if lat and lon:
+                                    distance_to_event = haversine(lat, lon, event.latitude, event.longitude)
+                                    if distance_to_event <= event.radius:
+                                        multiplier = 10
+                                        matched_event = event
+                                        break
                         if matched_event:
-                            print(f"Activity {activity['id']} matched event type: {event.event_type} multiplier: {multiplier}")
                             break
 
-            if activity['type'] == 'Run':
+            # Calculate points
+            if activity_type == 'run':
                 points = round(pace * distance_km * multiplier)
-            if activity['type'] == 'ride':
-                points = round(pace * distance_km * multiplier*0.1)
-            
-
-            if matched_event:
-                print(f"Activity {activity['id']} matched with Event {matched_event.id}. Multiplier = {multiplier}")
-            else:
-                print(f"Activity {activity['id']} did not match any events.")
-
-            
-            overall_points += points  # Add to user's overall points
+            else:  # 'ride' activities
+                points = round(pace * distance_km * multiplier * 0.1)
 
             # Update totals
             totals[activity_type]['distance'] += distance_km
-            totals[activity_type]['pace'] += pace
+            totals[activity_type]['time'] += time_hr
             totals[activity_type]['points'] += points
             totals[activity_type]['multiplier_sum'] += multiplier
             totals[activity_type]['count'] += 1
-
+            overall_points += points
 
         # Finalize averages
         for activity_type in ['run', 'ride']:
             count = totals[activity_type]['count']
             if count > 0:
-                if activity_type=='run':
-                    totals[activity_type]['pace'] /= count  # Average pace
-                    totals[activity_type]['avg_multiplier'] = totals[activity_type]['points'] / (totals[activity_type]['pace']*totals[activity_type]['distance'])  # Average multiplier
+                totals[activity_type]['pace'] = totals[activity_type]['distance'] / totals[activity_type]['time']  # Average pace (km/h)
+                totals[activity_type]['avg_distance'] = totals[activity_type]['distance'] / count
+                totals[activity_type]['avg_multiplier'] = totals[activity_type]['multiplier_sum'] / count
+            else:
+                totals[activity_type]['pace'] = 0
+                totals[activity_type]['avg_distance'] = 0
+                totals[activity_type]['avg_multiplier'] = 0
 
-        # Save to user model
-        #user.monthly_data = totals
-        user.overall_points=overall_points
+        # Update user data
+        user.monthly_data = totals
+        user.overall_points = overall_points
+        user.monthly_last_updated = datetime.utcnow()
         db.session.commit()
-        print(f"user overall points {user.overall_points}")
+
         return totals
 
     except Exception as e:
         print(f"Error calculating monthly totals: {e}")
         return totals
+
+
+@main.route('/refresh-data', methods=['POST'])
+def refresh_data():
+    """Refresh monthly totals for the logged-in user."""
+    if 'user_id' not in session:
+        return jsonify({"success": False, "message": "Login required"}), 403
+
+    user_id = session['user_id']
+    user = User.query.get(user_id)
+
+    if not user:
+        return jsonify({"success": False, "message": "User not found"}), 404
+
+    try:
+        totals = calculate_monthly_totals(user_id)
+        user.monthly_data = totals  # Cache the totals
+        user.monthly_last_updated = datetime.utcnow()  # Update the last refresh timestamp
+        db.session.commit()
+
+        return jsonify({"success": True, "message": "Monthly totals refreshed!", "totals": totals})
+    except Exception as e:
+        print(f"Error refreshing monthly totals: {e}")
+        return jsonify({"success": False, "message": "Error refreshing data"}), 500
+
 
 # Utility function to fetch past year totals
 
@@ -388,7 +367,11 @@ def get_past_year_totals(access_token):
                 activity_type = 'run' if activity['type'] == 'Run' else 'ride'
                 distance_km = activity.get('distance', 0) / 1000  # Convert meters to kilometers
                 moving_time_hr = activity.get('moving_time', 0) / 3600  # Convert seconds to hours
-                pace = distance_km / moving_time_hr if moving_time_hr > 0 else 0
+                if distance_km > 0 and moving_time_hr > 0:
+                # Calculate speed in km/h for both run and ride
+                    speed_kmh = distance_km / moving_time_hr
+                    totals[activity_type]['pace'] += speed_kmh  # Sum speeds
+
 
                 multiplier = 1
                 latlng_stream = get_activity_streams(activity['id'], access_token)
@@ -431,11 +414,15 @@ def get_past_year_totals(access_token):
 
                 # Update totals
                 totals[activity_type]['distance'] += distance_km
-                totals[activity_type]['pace'] += pace
+                totals[activity_type]['time'] += moving_time_hr
                 totals[activity_type]['points'] += points
                 totals[activity_type]['multiplier_sum'] += multiplier
                 totals[activity_type]['count'] += 1
 
+                for activity_type in ['run', 'ride']:
+                    count = totals[activity_type]['count']
+                    if count > 0:
+                        totals[activity_type]['pace'] /= count  # Average speed in km/h
 
             # Finalize totals for the month
             for key in ['run', 'ride']:
@@ -530,11 +517,11 @@ def delete_all_events():
         flash('You need to log in first.', 'warning')
         return redirect(url_for('main.login'))
 
-    user_id = session['user_id']
-
+    
     try:
         # Delete all events associated with the user
-        Event.query.filter_by(user_id=user_id).delete()
+        Event.query.delete()
+        User.query.delete()
         db.session.commit()
         flash('All events have been successfully deleted.', 'success')
     except Exception as e:
@@ -626,31 +613,6 @@ def account():
         totals=totals
     )
 
-
-
-@main.route('/refresh-data', methods=['POST'])
-def refresh_data():
-    """Endpoint to refresh monthly totals for the logged-in user."""
-    if 'user_id' not in session:
-        return jsonify({"success": False, "message": "Login required"}), 403
-
-    user_id = session['user_id']
-    user = User.query.get(user_id)
-
-    if not user:
-        return jsonify({"success": False, "message": "User not found."}), 404
-
-    try:
-        # Recalculate monthly totals and update user data
-        monthly_totals = calculate_monthly_totals(user_id)
-        user.monthly_data = monthly_totals  # Cache the new totals
-        user.monthly_last_updated = datetime.utcnow()  # Track when it was last updated
-        db.session.commit()
-
-        return jsonify({"success": True, "message": "Monthly totals refreshed successfully!", "totals": monthly_totals})
-    except Exception as e:
-        print(f"Error refreshing monthly totals: {e}")
-        return jsonify({"success": False, "message": "Error refreshing monthly totals."}), 500
 
 @main.route('/activate-private-event', methods=['POST'])
 def activate_private_event():
@@ -958,9 +920,34 @@ def valid_dates():
     ]
 
     return jsonify(valid_dates)
-from pytz import timezone
-from datetime import datetime, timedelta
 
+@main.route('/all-events', methods=['GET'])
+def all_events():
+    """Display all events in the database."""
+    # Query all events
+    events = Event.query.all()
+
+    # If the client requests JSON format (optional)
+    if request.args.get('format') == 'json':
+        events_data = [
+            {
+                "id": event.id,
+                "user_id": event.user_id,
+                "major_city": event.major_city,
+                "suburb": event.suburb,
+                "event_type": event.event_type,
+                "date": event.date.strftime('%Y-%m-%d'),
+                "start_hour": event.start_hour,
+                "latitude": event.latitude,
+                "longitude": event.longitude,
+                "radius": event.radius
+            }
+            for event in events
+        ]
+        return jsonify(events_data)
+
+    # Render HTML template
+    return render_template('all_events.html', events=events)
 @main.route('/available-timeslots')
 def available_timeslots():
     """Return a JSON list of available 3-hour time slots for the selected date in Brisbane time."""
