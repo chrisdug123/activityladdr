@@ -11,22 +11,48 @@ from dateutil.parser import isoparse
 
 BRISBANE_TZ = timezone('Australia/Brisbane')
 main = Blueprint('main', __name__)
-city_suburbs = {
-    "Sydney": ["Parramatta", "Manly", "Bondi", "Blacktown", "Chatswood", "Liverpool", "Penrith", "Newtown", "Surry Hills", "Castle Hill"],
-    "Melbourne": ["St Kilda", "Richmond", "Carlton", "Footscray", "Docklands", "South Yarra", "Fitzroy", "Collingwood", "Hawthorn", "Brunswick"],
-    "Brisbane": ["South Brisbane", "Fortitude Valley", "Toowong", "Sunnybank", "Kangaroo Point", "Spring Hill", "Indooroopilly", "Chermside", "Carindale", "Mount Gravatt","Bridgeman Downs","Newstead","Brisbane City"],
-    "Perth": ["Fremantle", "Cottesloe", "Subiaco", "Joondalup", "Scarborough", "Claremont", "Northbridge", "Victoria Park", "Leederville", "Midland"],
-    "Adelaide": ["Glenelg", "North Adelaide", "Norwood", "Burnside", "Prospect", "Unley", "Semaphore", "Henley Beach", "Mawson Lakes", "Tea Tree Gully"],
-}
 
 
-CITY_TIMEZONES = {
-    "Sydney": timezone("Australia/Sydney"),
-    "Melbourne": timezone("Australia/Melbourne"),
-    "Brisbane": timezone("Australia/Brisbane"),
-    "Perth": timezone("Australia/Perth"),
-    "Adelaide": timezone("Australia/Adelaide"),
+STATE_TIMEZONES = {
+    "Queensland": "Australia/Brisbane",
+    "New South Wales": "Australia/Sydney",
+    "Victoria": "Australia/Melbourne",
+    "Western Australia": "Australia/Perth",
 }
+
+import requests
+
+import requests
+
+import requests
+
+import requests
+
+def fetch_suburbs_by_state(state_name):
+    """Fetch all suburbs within a state using Overpass API."""
+    overpass_url = "https://overpass-api.de/api/interpreter"
+    query = f"""
+    [out:json];
+    area["name"="{state_name}"]->.searchArea;
+    (nwr["place"="suburb"](area.searchArea););
+    out body;
+    """
+    try:
+        response = requests.post(overpass_url, data={"data": query})
+        if response.status_code == 200:
+            results = response.json().get("elements", [])
+            suburbs = set()
+            for element in results:
+                name = element.get("tags", {}).get("name")
+                if name:
+                    suburbs.add(name)
+            print(suburbs)
+            return sorted(suburbs)  # Return unique, sorted list of suburbs
+        else:
+            print(f"Error fetching suburbs: {response.status_code}")
+    except Exception as e:
+        print(f"API request failed: {e}")
+    return []
 
 
 def get_coordinates(city, suburb):
@@ -142,14 +168,14 @@ def reset_private_event():
 def leaderboard():
     users = User.query.order_by(User.overall_points.desc()).all()
 
-    # Calculate countdown to end of the month
+    # Calculate countdown to end of  the month
     now = datetime.now()
     first_day_next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
     end_of_month = first_day_next_month - timedelta(seconds=1)
     countdown = (end_of_month - now).total_seconds()
 
     # Prepare data for the pie chart
-    chart_labels = [user.first_name + ' ' + user.last_name for user in users]
+    chart_labels = [user.username for user in users]
     chart_data = [user.overall_points for user in users]
 
     return render_template(
@@ -468,23 +494,34 @@ def create_account():
     if request.method == 'POST':
         first_name = request.form['first_name']
         last_name = request.form['last_name']
+        dob = request.form['dob']
+        username = request.form['username']  # New field
         email = request.form['email']
         password = request.form['password']
+
+        # Check if username or email already exists
+        if User.query.filter_by(username=username).first():
+            flash('Username already taken.', 'warning')
+            return redirect(url_for('main.create_account'))
         if User.query.filter_by(email=email).first():
             flash('Email already registered.', 'warning')
-            return redirect(url_for('main.login'))
+            return redirect(url_for('main.create_account'))
+
+        # Create the new user
         new_user = User(
             first_name=first_name,
             last_name=last_name,
-            email=email
+            email=email,
+            username=username  # Save username
         )
         new_user.set_password(password)
         db.session.add(new_user)
         db.session.commit()
+
         flash('Account created successfully!', 'success')
         return redirect(url_for('main.login'))
-    return render_template('create_account.html')
 
+    return render_template('create_account.html')
 
 @main.route('/delete-all-events', methods=['POST','GET'])
 def delete_all_events():
@@ -682,60 +719,70 @@ def activate_private_event():
 
     return jsonify({"success": True, "message": "Private event activated for the next 24 hours."})
 
+from pytz import timezone
+import pytz  # For UTC handling
+
+# Mapping states to their respective timezones
+STATE_TIMEZONES = {
+    "Queensland": "Australia/Brisbane",
+    "New South Wales": "Australia/Sydney",
+    "Victoria": "Australia/Melbourne",
+    "Western Australia": "Australia/Perth",
+}
+
 @main.route('/schedule', methods=['GET'])
 def schedule():
     if 'user_id' not in session:
         flash('You need to log in first.', 'warning')
         return redirect(url_for('main.login'))
 
-    user_id = session['user_id']
-    major_city_filter = request.args.get('major_city','Brisbane')
+    # Fetch the selected state (default to Queensland)
+    state_filter = request.args.get('state', 'Queensland')
 
-    if not major_city_filter or major_city_filter not in CITY_TIMEZONES:
-        flash('Please select a valid major city.', 'warning')
+    if state_filter not in STATE_TIMEZONES:
+        flash('Invalid state selected.', 'danger')
         return redirect(url_for('main.schedule'))
 
-    # Get the time zone for the selected city
-    city_tz = CITY_TIMEZONES[major_city_filter]
+    # Get the timezone for the selected state
+    state_tz = timezone(STATE_TIMEZONES[state_filter])
 
-    # Query events for the selected city
-    events_query = Event.query.filter(Event.user_id != None)
-    events_query = events_query.filter(Event.major_city == major_city_filter)
-    events = events_query.all()
-
-    # Localized current time in the selected city
+    # Current time in the state's timezone
     now_utc = datetime.utcnow()
-    now_city = utc.localize(now_utc).astimezone(city_tz)
-    today_city = now_city.date()
-    current_hour_city = now_city.hour
+    now_state = pytz.utc.localize(now_utc).astimezone(state_tz)
+    today = now_state.date()
+    current_hour = now_state.hour
 
-    valid_times = range(0, 24, 3)
+    # Query all events for the selected state
+    events = Event.query.filter(Event.major_city == state_filter).all()
 
-    # Limit calendar to 7 days
+    # Define valid times (3-hour slots)
+    valid_times = range(3, 24, 3)
+
+    # Build calendar
     calendar = {}
-    for offset in range(5):  # Show only the next 7 days
-        date = today_city + timedelta(days=offset)
+    for offset in range(5):  # Next 5 days
+        date = today + timedelta(days=offset)
         calendar[date] = {}
 
         for hour in valid_times:
+            # Skip past timeslots for today in the selected state
+            if date == today and hour + 3 <= current_hour:
+                calendar[date][hour] = {'status': 'unavailable'}
+                continue
+
+            # Check if the time slot is booked
             booked_event = next((e for e in events if e.date == date and e.start_hour == hour), None)
             if booked_event:
-                event_user = User.query.get(booked_event.user_id)
                 calendar[date][hour] = {
                     'status': 'booked',
                     'suburb': booked_event.suburb,
-                    'multiplier': booked_event.get_multiplier(event_user),
-                    'user': {
-                        'first_name': event_user.first_name,
-                        'last_name': event_user.last_name
-                    }
+                    'username': User.query.get(booked_event.user_id).username
                 }
-            elif date == today_city and hour + 3 <= current_hour_city:
-                calendar[date][hour] = {'status': 'unavailable'}
             else:
-                # Calculate cost based on days ahead
-                days_ahead = (date - today_city).days
-                cost = 0 if days_ahead <= 1 else days_ahead - 1
+                # Slot is available: calculate cost based on days ahead
+                days_ahead = (date - today).days
+                cost = 0 if days_ahead <= 1 else min(days_ahead - 1, 5)  # Cap cost at 5 bucks
+
                 calendar[date][hour] = {
                     'status': 'available',
                     'cost': cost
@@ -744,8 +791,8 @@ def schedule():
     return render_template(
         'schedule.html',
         calendar=calendar,
-        cities=CITY_TIMEZONES.keys(),
-        selected_city=major_city_filter
+        states=STATE_TIMEZONES.keys(),  # Pass states to the template
+        selected_state=state_filter
     )
 
 @main.route('/book-slot', methods=['POST'])
@@ -756,6 +803,7 @@ def book_slot():
 
     data = request.json
 
+    # Extract and validate `date`
     date_string = data.get('date', '').strip()
     if not date_string:
         return jsonify({"success": False, "message": "Date is missing."}), 400
@@ -773,37 +821,40 @@ def book_slot():
         return jsonify({"success": False, "message": "Invalid or missing hour. Must be 0, 3, 6, ..., 21."}), 400
 
     # Extract other fields
-    major_city = data.get('major_city')
-    suburb = data.get('suburb')
+    state = data.get('state')  # State selected by the user
+    suburb = data.get('suburb')  # Suburb selected by the user
     user_id = session['user_id']
 
-    if not major_city or major_city not in CITY_TIMEZONES:
-        return jsonify({"success": False, "message": "Invalid or missing major city."}), 400
+    # Validate state
+    if not state or state not in STATE_TIMEZONES:
+        return jsonify({"success": False, "message": "Invalid or missing state."}), 400
 
+    # Validate suburb
     if not suburb:
         return jsonify({"success": False, "message": "Suburb is missing."}), 400
 
-    # Calculate timezone-aware current date and time
-    city_tz = CITY_TIMEZONES[major_city]
+    # Get timezone-aware current time for the selected state
+    state_tz = timezone(STATE_TIMEZONES[state])
     now_utc = datetime.utcnow()
-    now_city = utc.localize(now_utc).astimezone(city_tz)
-    today_city = now_city.date()
+    now_state = pytz.utc.localize(now_utc).astimezone(state_tz)
+    today_state = now_state.date()
 
-    # Calculate the cost based on days ahead
-    days_ahead = (date - today_city).days
-    cost = 0 if days_ahead <= 1 else days_ahead - 1
-
-    latitude, longitude = get_coordinates(major_city, suburb)
+    # Fetch coordinates dynamically for the suburb
+    latitude, longitude = get_coordinates(state, suburb)
     if latitude is None or longitude is None:
-        flash('Unable to fetch coordinates for the location. Please try again.', 'danger')
-        return redirect(url_for('main.events'))
+        return jsonify({"success": False, "message": "Unable to fetch coordinates for the location. Please try again."}), 400
+
     # Validate the selected date and time
-    if date < today_city or (date == today_city and hour + 3 <= now_city.hour):
+    if date < today_state or (date == today_state and hour + 3 <= now_state.hour):
         return jsonify({"success": False, "message": "Invalid date or time."}), 400
 
+    # Calculate the cost based on days ahead
+    days_ahead = (date - today_state).days
+    cost = 0 if days_ahead <= 1 else min(days_ahead - 1, 5)  # Cap cost at 5 bucks
+
     # Check if the slot is already booked
-    if Event.query.filter_by(date=date, start_hour=hour, major_city=major_city).first():
-        return jsonify({"success": False, "message": "Slot already booked in this city."}), 400
+    if Event.query.filter_by(date=date, start_hour=hour, major_city=state, suburb=suburb).first():
+        return jsonify({"success": False, "message": "Slot already booked in this state and suburb."}), 400
 
     # Fetch the user and validate bucks
     user = User.query.get(user_id)
@@ -817,7 +868,7 @@ def book_slot():
     user.bucks -= cost
     new_event = Event(
         user_id=user_id,
-        major_city=major_city,
+        major_city=state,  # Store state in major_city
         suburb=suburb,
         date=date,
         start_hour=hour,
@@ -829,7 +880,6 @@ def book_slot():
     db.session.commit()
 
     return jsonify({"success": True, "message": "Slot booked successfully!"})
-
 
 @main.route('/events', methods=['GET', 'POST'])
 def events():
@@ -973,39 +1023,17 @@ def fetch_user_activities(user):
         print(f"Failed to fetch activities: {response.json()}")
         return []
 
-@main.route('/suburbs/<city>')
-def get_suburbs(city):
-    """Return a JSON list of suburbs for the selected city."""
-    suburbs = city_suburbs.get(city, [])
-    return jsonify(suburbs)
-
-def refresh_strava_token(user):
-    """Refresh the Strava access token using the user's refresh token."""
-    token_url = current_app.config['STRAVA_TOKEN_URL']
-    client_id = current_app.config['STRAVA_CLIENT_ID']
-    client_secret = current_app.config['STRAVA_CLIENT_SECRET']
-
+@main.route('/suburbs/<state>', methods=['GET'])
+def get_suburbs(state):
+    """Fetch suburbs for a selected state."""
     try:
-        response = requests.post(token_url, data={
-            'client_id': client_id,
-            'client_secret': client_secret,
-            'grant_type': 'refresh_token',
-            'refresh_token': user.strava_refresh_token
-        })
-
-        if response.status_code == 200:
-            data = response.json()
-            user.strava_access_token = data['access_token']
-            user.strava_refresh_token = data['refresh_token']
-            user.strava_expires_at = datetime.fromtimestamp(data['expires_at'], tz=utc)
-            db.session.commit()
-            return user.strava_access_token
-        else:
-            print(f"Failed to refresh token for user {user.id}: {response.json()}")
+        suburbs = fetch_suburbs_by_state(state)  # Replace with your API call or static list
+        return jsonify(suburbs)  # Return suburbs as JSON
     except Exception as e:
-        print(f"Exception while refreshing token: {e}")
+        print(f"Error fetching suburbs for state {state}: {e}")
+        return jsonify([]), 500
 
-    return None
+
 
 # Link Strava account route
 @main.route('/link-strava')

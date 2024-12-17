@@ -6,14 +6,14 @@
     <table class="table table-striped" id="leaderboardTable">
         <thead>
             <tr>
-                <th>Email</th>
+                <th>Username</th>
                 <th>Overall Points (Monthly)</th>
             </tr>
         </thead>
         <tbody>
             {% for user in users %}
             <tr>
-                <td>{{ user.email }}</td>
+                <td>{{ user.username }}</td>
                 <td>{{ user.overall_points }}</td>
             </tr>
             {% endfor %}
@@ -193,7 +193,7 @@
         const searchInput = document.createElement('input');
         searchInput.type = 'text';
         searchInput.className = 'form-control mb-3';
-        searchInput.placeholder = 'Search by email...';
+        searchInput.placeholder = 'Search by username...';
 
         table.parentElement.insertBefore(searchInput, table);
 
