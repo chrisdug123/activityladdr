@@ -220,6 +220,8 @@ def calculate_monthly_totals(user_id):
         activities = response.json()
         for activity in activities:
             # Determine activity type
+            print(f"\nChecking Activity ID: {activity['id']}")
+
             activity_type = 'run' if activity['type'] == 'Run' else 'ride'
             distance_km = activity.get('distance', 0) / 1000  # Convert to kilometers
             time_hr = activity.get('moving_time', 0) / 3600  # Convert moving time to hours
@@ -235,10 +237,13 @@ def calculate_monthly_totals(user_id):
 
             # Fetch activity GPS data for location matching
             latlng_stream = get_activity_streams(activity['id'], access_token)
+            print(f"Activity Date: {activity_date}, Hour: {activity_hour}")
+            print(f"Distance: {distance_km} km, Time: {time_hr} hr, Pace: {pace:.2f}")
 
             # Check for event interactions
             if latlng_stream and 'latlng' in latlng_stream:
                 for event in events:
+                    
                     if event.event_type == 'private':
                         if (event.date == activity_date and event.start_hour <= activity_hour) or \
                            (activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
@@ -246,19 +251,19 @@ def calculate_monthly_totals(user_id):
                             matched_event = event
                             break
                     elif event.event_type == 'public':
+                        print(f"Checking Event ID: {event.id}, Date: {event.date}, Hour: {event.start_hour}")
                         event_tz = timezone(STATE_TIMEZONES.get(event.major_city, "Australia/Brisbane"))
                         event_start_time = event_tz.localize(datetime.combine(event.date, datetime.min.time())) + timedelta(hours=event.start_hour)
                         event_end_time = event_start_time + timedelta(hours=3)
 
                         if event.date == activity_date and event_start_time.hour <= activity_hour < event_end_time.hour:
-                            for point in latlng_stream['latlng']['data']:
-                                lat, lon = point
-                                if lat and lon:
-                                    distance_to_event = haversine(lat, lon, event.latitude, event.longitude)
-                                    if distance_to_event <= event.radius:
-                                        multiplier = 10
-                                        matched_event = event
-                                        break
+                            print("Date matches")
+                            interaction_found = check_event_interactions(activity['id'], access_token, buffer_km=5)
+                            if interaction_found:
+                                multiplier = 10  # Event interaction multiplier
+                                matched_event = event
+                                print(f"Activity {activity['id']} interacted with an event. Multiplier = {multiplier}")
+
                         if matched_event:
                             break
 
@@ -293,7 +298,7 @@ def calculate_monthly_totals(user_id):
         user.overall_points = overall_points
         user.monthly_last_updated = datetime.utcnow()
         db.session.commit()
-
+        print(f"Final Overall Points: {user.overall_points}")
         return totals
 
     except Exception as e:
@@ -327,6 +332,41 @@ def refresh_data():
 
 # Utility function to fetch past year totals
 
+@main.route('/test-suburb-coordinates', methods=['GET'])
+def test_suburb_coordinates():
+    """
+    Test route: Loop through all suburbs for each state, fetch coordinates,
+    and check if they are valid. Display results in a table.
+    """
+    from . import db  # Ensure this is available
+    results = []
+
+    # List of states to test
+    states = ["Queensland", "New South Wales", "Victoria", "Western Australia"]
+
+    # Loop through each state and its suburbs
+    for state in states:
+        print(f"Fetching suburbs for {state}")
+        suburbs = fetch_suburbs_by_state(state)  # Fetch suburbs dynamically
+        if not suburbs:
+            print(f"No suburbs found for state: {state}")
+            continue
+
+        for suburb in suburbs:
+            # Fetch coordinates for each suburb
+            latitude, longitude = get_coordinates(state, suburb)
+            print(f"State: {state}, Suburb: {suburb}, Lat: {latitude}, Lon: {longitude}")
+
+            # Append results to display later
+            results.append({
+                "state": state,
+                "suburb": suburb,
+                "latitude": latitude if latitude else "Missing",
+                "longitude": longitude if longitude else "Missing"
+            })
+
+    # Render results in a sortable table
+    return render_template('test_suburb_coordinates.html', results=results)
 
 def get_past_year_totals(access_token):
     """Fetch monthly totals for the past year, applying multipliers based on activity interactions."""
@@ -499,7 +539,11 @@ def create_account():
             first_name=first_name,
             last_name=last_name,
             email=email,
-            username=username  # Save username
+            username=username,
+            monthly_data={
+            'run': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+            'ride': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+        }  # Save username
         )
         new_user.set_password(password)
         db.session.add(new_user)
@@ -597,10 +641,12 @@ def account():
             bucks_reset_time = 0  # Bucks should already be regenerated
     print(bucks_reset_time)
     # Load cached monthly_data directly from the user model
+    print(user.monthly_data)
     totals = user.monthly_data or {
-        'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-        'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-    }
+            'run': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+            'ride': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+        }
+
 
     return render_template(
         'account.html',

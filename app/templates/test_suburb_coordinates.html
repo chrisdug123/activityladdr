@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}Suburb Coordinates Test{% endblock %}
+
+{% block content %}
+<h2 class="mt-5">Suburb Coordinates Test</h2>
+<p>This table tests if suburbs across all states return valid coordinates.</p>
+
+<div class="table-responsive">
+    <table class="table table-bordered table-hover sortable" id="coordinatesTable">
+        <thead class="table-light">
+            <tr>
+                <th onclick="sortTable(0)">State</th>
+                <th onclick="sortTable(1)">Suburb</th>
+                <th onclick="sortTable(2)">Latitude</th>
+                <th onclick="sortTable(3)">Longitude</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for result in results %}
+            <tr>
+                <td>{{ result.state }}</td>
+                <td>{{ result.suburb }}</td>
+                <td class="{% if result.latitude == 'Missing' %}text-danger{% endif %}">
+                    {{ result.latitude }}
+                </td>
+                <td class="{% if result.longitude == 'Missing' %}text-danger{% endif %}">
+                    {{ result.longitude }}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+<script>
+    // Function to make table columns sortable
+    function sortTable(n) {
+        const table = document.getElementById("coordinatesTable");
+        const rows = Array.from(table.rows).slice(1); // Skip the header row
+        const isAscending = table.rows[0].cells[n].getAttribute("data-order") !== "asc";
+
+        rows.sort((rowA, rowB) => {
+            const cellA = rowA.cells[n].innerText.trim();
+            const cellB = rowB.cells[n].innerText.trim();
+
+            if (!isNaN(cellA) && !isNaN(cellB)) {
+                return isAscending ? cellA - cellB : cellB - cellA;
+            }
+
+            return isAscending ? cellA.localeCompare(cellB) : cellB.localeCompare(cellA);
+        });
+
+        rows.forEach(row => table.tBodies[0].appendChild(row));
+
+        // Update sort order
+        table.rows[0].cells[n].setAttribute("data-order", isAscending ? "asc" : "desc");
+    }
+</script>
+{% endblock %}

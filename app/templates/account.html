@@ -79,7 +79,8 @@
             <td>{{ totals.run.distance | round(2) }}</td>
             <td>{{ totals.run.time | round(2) }}</td>
             <td>{{ totals.run.count }}</td>
-            <td>{{ totals.run.avg_multiplier | round(2) }}</td>
+            <td>{{ totals.run.avg_multiplier | default(1) | round(2) }}</td>
+
             <td>{{ totals.run.points }}</td>
         </tr>
         <tr>
@@ -87,7 +88,7 @@
             <td>{{ totals.ride.distance | round(2) }}</td>
             <td>{{ totals.ride.time | round(2) }}</td>
             <td>{{ totals.ride.count }}</td>
-            <td>{{ totals.ride.avg_multiplier | round(2) }}</td>
+            <td>{{ totals.ride.avg_multiplier | default(1)| round(2) }}</td>
             <td>{{ totals.ride.points }}</td>
         </tr>
     </tbody>
