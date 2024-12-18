@@ -21,7 +21,7 @@ def create_app():
         exists = os.path.exists(db_path)
         return jsonify({"db_uri": db_uri, "db_path": db_path, "exists": exists})
 
-     db.init_app(app)
+    db.init_app(app)
     migrate.init_app(app, db)
     # Register blueprints
     from .routes import main
