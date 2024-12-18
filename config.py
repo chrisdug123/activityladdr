@@ -4,15 +4,7 @@ class Config:
     SECRET_KEY = 'your_secret_key_here'
 
     #below is dev db
-    
-
-# Use an environment variable to determine the environment
-    ENV = os.getenv('FLASK_ENV', 'production')
-
-    if ENV == 'production':
-        SQLALCHEMY_DATABASE_URI = 'sqlite:////home/site/wwwroot/ActivityLaddr/instance/activityladdr2.db'
-    else:  # Default to development (local)
-        SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
 
     
 
