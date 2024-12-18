@@ -208,8 +208,11 @@ def calculate_monthly_totals(user_id):
     totals = {
         'run': {'distance': 0, 'time': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
         'ride': {'distance': 0, 'time': 0, 'points': 0, 'multiplier_sum': 0, 'count': 0},
+        'event_interactions': 0
+
     }
     overall_points = 0
+    interacted_event_ids = set()  # To track unique event interactions
 
     try:
         response = requests.get(activities_url, headers=headers, params={'after': start_timestamp})
@@ -241,32 +244,35 @@ def calculate_monthly_totals(user_id):
             print(f"Distance: {distance_km} km, Time: {time_hr} hr, Pace: {pace:.2f}")
 
             # Check for event interactions
-            if latlng_stream and 'latlng' in latlng_stream:
-                for event in events:
+            for event in events:
                     
-                    if event.event_type == 'private':
-                        if (event.date == activity_date and event.start_hour <= activity_hour) or \
-                           (activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
-                            multiplier = 3
+                if event.event_type == 'private':
+                    if (event.date == activity_date and event.start_hour <= activity_hour) or \
+                        (activity_date == (event.date + timedelta(days=1)) and activity_hour < (event.start_hour + 24) % 24):
+                        multiplier = 3
+                        matched_event = event
+                        print(f"Activity {activity['id']} interacted with an event. Multiplier = {multiplier}")
+                        interacted_event_ids.add(matched_event.id)
+
+                        
+                        break
+                elif event.event_type == 'public':
+                    print(f"Checking Event ID: {event.id}, Date: {event.date}, Hour: {event.start_hour}")
+                    event_tz = timezone(STATE_TIMEZONES.get(event.major_city, "Australia/Brisbane"))
+                    event_start_time = event_tz.localize(datetime.combine(event.date, datetime.min.time())) + timedelta(hours=event.start_hour)
+                    event_end_time = event_start_time + timedelta(hours=3)
+
+                    if event.date == activity_date and event_start_time.hour <= activity_hour < event_end_time.hour:
+                        print("Date matches")
+                        interaction_found = check_event_interactions(activity['id'], access_token, buffer_km=5)
+                        if interaction_found:
+                            multiplier = 10  # Event interaction multiplier
                             matched_event = event
-                            break
-                    elif event.event_type == 'public':
-                        print(f"Checking Event ID: {event.id}, Date: {event.date}, Hour: {event.start_hour}")
-                        event_tz = timezone(STATE_TIMEZONES.get(event.major_city, "Australia/Brisbane"))
-                        event_start_time = event_tz.localize(datetime.combine(event.date, datetime.min.time())) + timedelta(hours=event.start_hour)
-                        event_end_time = event_start_time + timedelta(hours=3)
+                            print(f"Activity {activity['id']} interacted with an event. Multiplier = {multiplier}")
+                            interacted_event_ids.add(matched_event.id)
 
-                        if event.date == activity_date and event_start_time.hour <= activity_hour < event_end_time.hour:
-                            print("Date matches")
-                            interaction_found = check_event_interactions(activity['id'], access_token, buffer_km=5)
-                            if interaction_found:
-                                multiplier = 10  # Event interaction multiplier
-                                matched_event = event
-                                print(f"Activity {activity['id']} interacted with an event. Multiplier = {multiplier}")
-
-                        if matched_event:
-                            break
-
+                if matched_event:
+                    break
             # Calculate points
             if activity_type == 'run':
                 points = round(pace * distance_km * multiplier)
@@ -292,6 +298,8 @@ def calculate_monthly_totals(user_id):
                 totals[activity_type]['pace'] = 0
                 totals[activity_type]['avg_distance'] = 0
                 totals[activity_type]['avg_multiplier'] = 0
+        
+        totals['event_interactions'] = len(interacted_event_ids)
 
         # Update user data
         user.monthly_data = totals
@@ -543,6 +551,8 @@ def create_account():
             monthly_data={
             'run': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
             'ride': {'distance': 0, 'time': 0, 'pace': 0, 'points': 0, 'avg_distance': 0, 'avg_multiplier': 0, 'count': 0},
+            'event_interactions': 0
+
         }  # Save username
         )
         new_user.set_password(password)
@@ -720,9 +730,10 @@ def activate_private_event():
     )
     db.session.add(private_event)
 
-    # Update user's private event tracking
-    user.private_event_ends = now_brisbane + timedelta(hours=24)  # Store in UTC
-    user.last_activated = now_brisbane  # Store activation time in UTC
+    # Set expiration in UTC for consistency
+    user.last_activated = now_brisbane  # Keep for cooldown in Brisbane timezone
+    private_event_ends_utc = (now_brisbane + timedelta(hours=24)).astimezone(UTC)  # Store in UTC
+    user.private_event_ends = private_event_ends_utc
     db.session.commit()
 
     return jsonify({"success": True, "message": "Private event activated for the next 24 hours."})
