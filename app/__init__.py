@@ -4,6 +4,10 @@ from flask_migrate import Migrate
 import os
 db = SQLAlchemy()
 
+db = SQLAlchemy()
+migrate = Migrate()
+
+
 def create_app():
     app = Flask(__name__)
     app.config.from_object('config.Config')
@@ -17,9 +21,8 @@ def create_app():
         exists = os.path.exists(db_path)
         return jsonify({"db_uri": db_uri, "db_path": db_path, "exists": exists})
 
-    db.init_app(app)
-    Migrate(app, db)
-
+     db.init_app(app)
+    migrate.init_app(app, db)
     # Register blueprints
     from .routes import main
     app.register_blueprint(main)
