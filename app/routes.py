@@ -8,6 +8,7 @@ from pytz import timezone, utc
 from sqlalchemy import and_
 from datetime import datetime
 from dateutil.parser import isoparse
+import os
 
 BRISBANE_TZ = timezone('Australia/Brisbane')
 main = Blueprint('main', __name__)
@@ -21,12 +22,22 @@ STATE_TIMEZONES = {
 }
 
 import requests
+ 
+@main.route('/debug/db-path')
+def debug_db_path():
+    db_path = os.path.abspath('activityladdr2.db')
+    app.logger.debug(f"SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
 
-import requests
+    return jsonify({"db_path": db_path, "exists": os.path.exists(db_path)})
 
-import requests
 
-import requests
+@main.route('/debug/test-write')
+def test_write():
+    test_user = User(first_name="Test", last_name="User", email="test@example.com")
+    db.session.add(test_user)
+    db.session.commit()
+    return "Test user added!"
+
 
 def fetch_suburbs_by_state(state_name):
     """Fetch all suburbs within a state using Overpass API."""

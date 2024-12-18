@@ -7,7 +7,6 @@ class Config:
     SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
 
     
-
     #below is prod db
     #SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr.db'
     #SQLALCHEMY_TRACK_MODIFICATIONS = False
