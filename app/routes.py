@@ -23,12 +23,6 @@ STATE_TIMEZONES = {
 
 import requests
  
-@main.route('/debug/db-path')
-def debug_db_path():
-    db_path = os.path.abspath('activityladdr2.db')
-    app.logger.debug(f"SQLALCHEMY_DATABASE_URI: {app.config['SQLALCHEMY_DATABASE_URI']}")
-
-    return jsonify({"db_path": db_path, "exists": os.path.exists(db_path)})
 
 
 @main.route('/debug/test-write')

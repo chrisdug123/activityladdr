@@ -4,8 +4,8 @@ class Config:
     SECRET_KEY = 'your_secret_key_here'
 
     #below is dev db
-    #SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
-    SQLALCHEMY_DATABASE_URI = 'sqlite:////home/site/wwwroot/ActivityLaddr/instance/activityladdr2.db'
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///activityladdr2.db'
+    #SQLALCHEMY_DATABASE_URI = 'sqlite:////home/site/wwwroot/ActivityLaddr/instance/activityladdr2.db'
 
 
 
