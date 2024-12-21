@@ -7,36 +7,24 @@ BRISBANE_TZ = timezone('Australia/Brisbane')
 class User(db.Model):
     __tablename__ = 'users'
     id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(50), unique=True, nullable=False)  # New field
-    
+    username = db.Column(db.String(50), unique=True, nullable=False)
     first_name = db.Column(db.String(50), nullable=False)
     last_name = db.Column(db.String(50), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    strava_id = db.Column(db.String(50), nullable=True)  # Stores Strava user ID
-    strava_access_token = db.Column(db.String(255), nullable=True)
-    strava_refresh_token = db.Column(db.String(255))
-    strava_expires_at = db.Column(db.Integer)    # Stores Strava access token
-    bucks = db.Column(db.Integer, default=5)  # Weekly Bucks balance
-    last_bucks_update = db.Column(db.DateTime, default=datetime.utcnow)
-    private_event_ends = db.Column(db.DateTime, nullable=True)  # End time for private event
-    last_activated = db.Column(db.DateTime, nullable=True)  # Last activation time for weekly cooldown
-    linked_accounts = db.Column(db.Boolean, default=False)  # Example field for linked accounts
+    strava_id = db.Column(db.String(50), unique=True, nullable=False)
+    strava_access_token = db.Column(db.String(255), nullable=False)
+    strava_refresh_token = db.Column(db.String(255), nullable=False)
+    strava_expires_at = db.Column(db.Integer, nullable=False)
+    bucks = db.Column(db.Integer, default=5)
     overall_points = db.Column(db.Integer, default=0)
-    # Caching fields for activity data
     monthly_data = db.Column(db.JSON, default={
         'run': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
         'ride': {'distance': 0, 'pace': 0, 'points': 0, 'avg_multiplier': 1},
-    }) # Cached monthly totals
-    yearly_data = db.Column(db.JSON, nullable=True)   # Cached yearly totals
-    monthly_last_updated = db.Column(db.DateTime, nullable=True)  # Last updated timestamp for monthly data
-    yearly_last_updated = db.Column(db.DateTime, nullable=True)   # Last updated timestamp for yearly data
+    })
 
-    def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
-
-    def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+    # Helper method to check if a Strava token needs refreshing
+    def is_token_expired(self):
+        return datetime.utcnow().timestamp() >= self.strava_expires_at
 
     def regenerate_bucks(self):
         """Regenerates bucks if a week has passed since the last update."""

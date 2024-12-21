@@ -162,11 +162,13 @@ def reset_private_event():
 
     return jsonify({"success": True, "message": "Private event activation reset successfully."})
 
+@main.route('/', methods=['GET'])
 @main.route('/leaderboard', methods=['GET'])
 def leaderboard():
+    # Leaderboard data
     users = User.query.order_by(User.overall_points.desc()).all()
 
-    # Calculate countdown to end of  the month
+    # Calculate countdown to the end of the month
     now = datetime.now()
     first_day_next_month = (now.replace(day=1) + timedelta(days=32)).replace(day=1)
     end_of_month = first_day_next_month - timedelta(seconds=1)
@@ -176,13 +178,70 @@ def leaderboard():
     chart_labels = [user.username for user in users]
     chart_data = [user.overall_points for user in users]
 
+    # Schedule data
+    state_filter = request.args.get('state', 'Queensland')
+
+    if state_filter not in STATE_TIMEZONES:
+        flash('Invalid state selected.', 'danger')
+        return redirect(url_for('main.leaderboard'))
+
+    # Get timezone for the selected state
+    state_tz = timezone(STATE_TIMEZONES[state_filter])
+
+    # Current time in the state's timezone
+    now_utc = datetime.utcnow()
+    now_state = pytz.utc.localize(now_utc).astimezone(state_tz)
+    today = now_state.date()
+    current_hour = now_state.hour
+
+    # Query all events for the selected state
+    events = Event.query.filter(Event.major_city == state_filter).all()
+
+    # Define valid times (3-hour slots)
+    valid_times = range(3, 24, 3)
+
+    # Build calendar
+    calendar = {}
+    for offset in range(4):  # Next 5 days
+        date = today + timedelta(days=offset)
+        calendar[date] = {}
+
+        for hour in valid_times:
+            # Check if the slot is booked
+            booked_event = next((e for e in events if e.date == date and e.start_hour == hour), None)
+            if booked_event:
+                calendar[date][hour] = {
+                    'status': 'booked',
+                    'suburb': booked_event.suburb,
+                    'username': User.query.get(booked_event.user_id).username
+                }
+            else:
+                # Mark slots as unavailable only if they are past and not booked
+                if date == today and hour + 3 <= current_hour:
+                    calendar[date][hour] = {'status': 'unavailable'}
+                else:
+                    # Slot is available: calculate cost based on days ahead
+                    days_ahead = (date - today).days
+                    cost = 0 if days_ahead <= 1 else min(days_ahead - 1, 5)  # Cap cost at 5 bucks
+
+                    calendar[date][hour] = {
+                        'status': 'available',
+                        'cost': cost
+                    }
+    print(f"Countdown seconds: {countdown}")
+
     return render_template(
         'leaderboard.html',
         users=users,
         countdown=countdown,
         chart_labels=chart_labels,
-        chart_data=chart_data
+        chart_data=chart_data,
+        calendar=calendar,
+        states=STATE_TIMEZONES.keys(),  # Pass states to the template
+        selected_state=state_filter
     )
+
+
 
 def calculate_monthly_totals(user_id):
     """Calculate and save monthly totals for the user."""
@@ -503,9 +562,7 @@ def get_past_year_totals(access_token):
 # Home page route
 @main.route('/')
 def index():
-    if 'user_id' in session:
-        return redirect(url_for('main.account'))  # Redirect to account if logged in
-    return redirect(url_for('main.login'))  # Redirect to login otherwise
+    return redirect(url_for('main.leaderboard'))  # Redirect to login otherwise
 
 # Login route
 @main.route('/login', methods=['GET', 'POST'])
@@ -524,9 +581,10 @@ def login():
 # Logout route
 @main.route('/logout')
 def logout():
+    """Log out the user."""
     session.pop('user_id', None)
-    flash('You have been logged out.', 'success')
-    return redirect(url_for('main.login'))
+    flash('You have been logged out.', 'info')
+    return redirect(url_for('main.leaderboard'))
 
 # Create account route
 @main.route('/create-account', methods=['GET', 'POST'])
@@ -572,10 +630,7 @@ def create_account():
 @main.route('/delete-all-events', methods=['POST','GET'])
 def delete_all_events():
     """Delete all events for the logged-in user."""
-    if 'user_id' not in session:
-        flash('You need to log in first.', 'warning')
-        return redirect(url_for('main.login'))
-
+  
     
     try:
         # Delete all events associated with the user
@@ -1083,57 +1138,30 @@ def get_suburbs(state):
 
 
 
+
 # Link Strava account route
-@main.route('/link-strava')
-def link_strava():
-    """Start the Strava OAuth flow for the logged-in user."""
-    if 'user_id' not in session:
-        flash('You need to log in first.', 'warning')
-        return redirect(url_for('main.login'))
-
-    # Dynamically fetch client_id from configuration
-    client_id = current_app.config.get('STRAVA_CLIENT_ID')
-    print(f"Client ID is {client_id}")
-    if not client_id:
-        flash('Strava integration is not configured properly.', 'danger')
-        return redirect(url_for('main.account'))
-
+@main.route('/strava/login')
+def strava_login():
+    """Redirect to Strava OAuth for authentication."""
+    client_id = current_app.config['STRAVA_CLIENT_ID']
     redirect_uri = url_for('main.strava_callback', _external=True)
-    scope = "read,activity:read"  # Scopes for Strava access
-    auth_url = (
-        f"{current_app.config['STRAVA_AUTH_URL']}?client_id={client_id}"
-        f"&response_type=code&redirect_uri={redirect_uri}&scope={scope}"
-    )
-    
-    print(f"Redirecting to Strava Auth URL: {auth_url}")  # Debugging
-
+    scope = scope = "read,activity:read"
+  # Strava scopes you need
+    auth_url = f"{current_app.config['STRAVA_AUTH_URL']}?client_id={client_id}&response_type=code&redirect_uri={redirect_uri}&scope={scope}"
     return redirect(auth_url)
 
-# Strava callback route
+
 @main.route('/strava/callback')
 def strava_callback():
     """Handle Strava OAuth callback and store user-specific tokens."""
-    if 'user_id' not in session:
-        flash('You need to log in first.', 'warning')
-        return redirect(url_for('main.login'))
-
     code = request.args.get('code')
-    print(f"Code is {code}")
-    
     if not code:
         flash('Authorization failed. Please try again.', 'danger')
-        return redirect(url_for('main.account'))
+        return redirect(url_for('main.index'))  # Redirect to the leaderboard
 
     client_id = current_app.config.get('STRAVA_CLIENT_ID')
     client_secret = current_app.config.get('STRAVA_CLIENT_SECRET')
     token_url = current_app.config.get('STRAVA_TOKEN_URL')
-    print(f"Client ID is {client_id}")
-    print(f"Client Secret is {client_secret}") 
-    print(f"Token url is {token_url}")
-
-    if not client_id or not client_secret or not token_url:
-        flash('Strava integration is not configured properly.', 'danger')
-        return redirect(url_for('main.account'))
 
     response = requests.post(token_url, data={
         'client_id': client_id,
@@ -1144,16 +1172,50 @@ def strava_callback():
 
     if response.status_code == 200:
         data = response.json()
-        user = User.query.get(session['user_id'])
+        strava_id = data.get('athlete', {}).get('id')
+        email = f"{strava_id}@strava.com"  # Generate a Strava-based email
+        username = f"StravaUser{strava_id}"  # Generate a default username
 
-        user.strava_id = data.get('athlete', {}).get('id')
+        # Check if the user already exists
+        user = User.query.filter_by(strava_id=strava_id).first()
+
+        if not user:
+            # Create a new user if one does not exist
+            user = User(
+                username=username,
+                first_name=data['athlete']['firstname'],
+                last_name=data['athlete']['lastname'],
+                email=email,
+                strava_id=strava_id,
+                bucks=5,  # Initialize with default bucks
+            )
+
+        # Update Strava tokens
         user.strava_access_token = data.get('access_token')
         user.strava_refresh_token = data.get('refresh_token')
         user.strava_expires_at = data.get('expires_at')
+        user.last_bucks_update = datetime.utcnow()  # Update bucks timestamp
 
+        db.session.add(user)
         db.session.commit()
-        flash('Strava account linked successfully!', 'success')
+
+        # Log the user in by storing their ID in the session
+        session['user_id'] = user.id
+
+        # Refresh user data after login
+        try:
+            totals = calculate_monthly_totals(user.id)  # Reuse the existing function
+            user.monthly_data = totals  # Cache the totals
+            user.monthly_last_updated = datetime.utcnow()  # Update timestamp
+            db.session.commit()
+            print("User totals are:")
+            print(totals)
+        except Exception as e:
+            print(f"Error refreshing monthly totals: {e}")
+            flash('Unable to refresh your monthly data. Please try again later.', 'danger')
+
+        flash('Strava account linked and data refreshed successfully!', 'success')
+        return redirect(url_for('main.index'))  # Redirect to the leaderboard
     else:
         flash('Failed to link Strava account. Please try again.', 'danger')
-
-    return redirect(url_for('main.account'))
+        return redirect(url_for('main.index'))

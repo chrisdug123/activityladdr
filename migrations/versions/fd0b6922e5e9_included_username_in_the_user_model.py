@@ -18,7 +18,7 @@ depends_on = None
 
 def upgrade():
     # Add the username column to the users table
-    op.add_column('users', sa.Column('username', sa.String(length=50), nullable=True))
+    #op.add_column('users', sa.Column('username', sa.String(length=50), nullable=True))
     
     # Add a unique constraint with a name
     op.create_unique_constraint('uq_users_username', 'users', ['username'])

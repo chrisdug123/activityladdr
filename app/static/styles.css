@@ -25,3 +25,8 @@ th, td {
     text-align: center; /* Center-align all text */
     vertical-align: middle; /* Vertically center-align */
 }
+
+
+.text-center {
+    text-align: center;
+}

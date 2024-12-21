@@ -1,62 +1,127 @@
 {% extends 'base.html' %}
 {% block title %}Leaderboard{% endblock %}
 {% block content %}
-<h2 class="mt-5">User Leaderboard</h2>
-<div class="table-responsive">
-    <table class="table table-striped" id="leaderboardTable">
-        <thead>
-            <tr>
-                <th>Username</th>
-                <th>Overall Points (Monthly)</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for user in users %}
-            <tr>
-                <td>{{ user.username }}</td>
-                <td>{{ user.overall_points }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-<h3 class="mt-5">Countdown to End of the Month</h3>
-<p>At the end of the month, the wheel will be spun and winners will be announced!</p>
-<div id="countdown-timer" class="fs-4 fw-bold"></div>
-<h3 class="mt-5">Leaderboard Wheel</h3>
-<div class="wheel-container position-relative">
+
+<h3 class="mt-5 text-center">GET MORE OUT OF YOUR SWEAT</h3>
+
+
+<!-- Giveaway Countdown Message -->
+<p id="countdown-message" class="text-center fs-4 fw-bold"></p>
+
+<!-- Leaderboard Wheel -->
+<div class="wheel-container position-relative mt-4">
     <canvas id="leaderboardWheel" width="400" height="400"></canvas>
     <div class="wheel-pointer position-absolute" style="top: 50%; left: 50%; transform: translate(-50%, -50%);">
         <i class="fas fa-arrow-up fa-2x"></i>
     </div>
 </div>
 
-<div class="mt-3">
-    <button id="spinWheelButton" class="btn btn-primary">Spin the Wheel</button>
+<!-- Spin Button -->
+<div class="mt-3 text-center">
+    <button id="spinWheelButton" class="btn btn-primary">Spin Me</button>
 </div>
 
-<p id="winnerAnnouncement" class="mt-3 fs-5 text-success fw-bold"></p>
+<!-- Winner Announcement -->
+<p id="winnerAnnouncement" class="mt-3 fs-5 text-success fw-bold text-center"></p>
+
+<!-- Join the Action Button -->
+<!-- Strava Linking Section -->
+<div class="text-center mt-4">
+    <a href="{{ url_for('main.strava_login') }}" id="stravaLoginButton" class="btn btn-danger">
+        <i class="fab fa-strava"></i> Join the Fun
+    </a>
+</div>
+
+<!-- Loading Indicator -->
+<div id="loadingIndicator" class="text-center mt-3" style="display: none;">
+    <p>Linking your account and refreshing your data. This may take a moment...</p>
+    <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+    </div>
+</div>
+
+
+<!-- Toggle Button -->
+<div class="mt-4 text-center">
+    <button id="toggleScheduleButton" class="btn btn-info">Events</button>
+</div>
+
+<!-- Schedule Content -->
+<div id="scheduleContent" style="display: none;">
+    {% include 'schedule.html' %}
+</div>
+
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+
+document.addEventListener('DOMContentLoaded', function () {
+    const scheduleToggle = document.getElementById('toggleScheduleButton');
+    const scheduleContent = document.getElementById('scheduleContent');
+
+    if (scheduleToggle && scheduleContent) {
+        scheduleToggle.addEventListener('click', function () {
+            const isHidden = scheduleContent.style.display === 'none';
+            scheduleContent.style.display = isHidden ? 'block' : 'none';
+            scheduleToggle.textContent = isHidden ? 'Hide Events Schedule' : 'Show Events Schedule';
+        });
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function () {
+    const stravaLoginButton = document.getElementById('stravaLoginButton');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+
+    if (stravaLoginButton) {
+        stravaLoginButton.addEventListener('click', function () {
+            // Show loading indicator when user clicks the Strava login button
+            loadingIndicator.style.display = 'block';
+
+            // Optional: Hide the button to prevent multiple clicks
+            stravaLoginButton.style.display = 'none';
+        });
+    }
+});
+
     document.addEventListener('DOMContentLoaded', function () {
+        // Combined Countdown Message
+        const countdownSeconds = {{ countdown | int }};
+        const countdownMessage = document.getElementById('countdown-message');
+        let secondsLeft = countdownSeconds;
+
+        function formatTime(seconds) {
+            const days = Math.floor(seconds / 86400);
+            const hours = Math.floor((seconds % 86400) / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secondsRemaining = seconds % 60;
+            return `${days}d ${hours}h ${minutes}m ${secondsRemaining}s`;
+        }
+
+        function updateCountdown() {
+            if (secondsLeft > 0) {
+                countdownMessage.textContent = `We're giving away $500 in ${formatTime(secondsLeft)}, don't miss out!`;
+                secondsLeft -= 1;
+            } else {
+                countdownMessage.textContent = "The giveaway has ended!";
+            }
+        }
+
+        updateCountdown();
+        setInterval(updateCountdown, 1000);
+
+        // Chart Data for Wheel
         const labels = {{ chart_labels | safe }};
         const data = {{ chart_data | safe }};
         const colors = ['#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', '#9966ff', '#ff9f40', '#ff6347', '#4682b4'];
         const totalPoints = data.reduce((sum, score) => sum + score, 0);
 
-        // Normalize the data to create proportional segments
-        const normalizedData = data.map(score => (score / totalPoints) * 360); // Convert to degrees
-
         const canvas = document.getElementById('leaderboardWheel');
         const ctx = canvas.getContext('2d');
         const radius = canvas.width / 2;
+        let currentAngle = 0;
+        let spinAngle = 0;
+        let spinning = false;
 
-        let currentAngle = 0; // Start position
-        let spinAngle = 0; // Final spin angle
-        let spinning = false; // Lock wheel during spin
-
-        // Draw the wheel
         function drawWheel() {
             let startAngle = 0;
             for (let i = 0; i < labels.length; i++) {
@@ -78,8 +143,9 @@
                 ctx.rotate(textAngle);
                 ctx.fillStyle = "#fff";
                 ctx.font = "14px Arial";
-                ctx.fillText(labels[i], -ctx.measureText(labels[i]).width / 2, 0);
-                ctx.restore();
+                const label = `${labels[i]} (${data[i]} pts)`; // Add points after username
+        ctx.fillText(label, -ctx.measureText(label).width / 2, 0);
+        ctx.restore();
 
                 startAngle += sliceAngle;
             }
@@ -87,23 +153,19 @@
 
         drawWheel();
 
-        // Spin the wheel
         document.getElementById('spinWheelButton').addEventListener('click', function () {
-            if (spinning) return; // Prevent multiple spins
+            if (spinning) return;
 
             spinning = true;
-            const spinDuration = 5000; // 5 seconds
-            const randomAngle = Math.random() * 360; // Random landing angle
-            spinAngle = 360 * 5 + randomAngle; // Spin 5 full rotations + random angle
+            const randomAngle = Math.random() * 360;
+            spinAngle = 360 * 5 + randomAngle;
             const start = performance.now();
 
             function animateSpin(time) {
                 const elapsed = time - start;
-                const progress = Math.min(elapsed / spinDuration, 1);
-                const easing = Math.pow(progress, 3); // Cubic easing for smooth spin
-                currentAngle = easing * spinAngle;
+                const progress = Math.min(elapsed / 5000, 1);
+                currentAngle = spinAngle * Math.pow(progress, 3);
 
-                // Redraw the wheel with the new angle
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 ctx.save();
                 ctx.translate(radius, radius);
@@ -123,21 +185,44 @@
             requestAnimationFrame(animateSpin);
         });
 
-        // Announce the winner
         function announceWinner(angle) {
-            const cumulativeAngles = [];
-            let cumulative = 0;
-            for (const score of normalizedData) {
-                cumulative += score;
-                cumulativeAngles.push(cumulative);
+            let cumulativeAngle = 0;
+            for (let i = 0; i < data.length; i++) {
+                cumulativeAngle += (data[i] / totalPoints) * 360;
+                if ((360 - angle) % 360 <= cumulativeAngle) {
+                    document.getElementById('winnerAnnouncement').innerHTML = `
+                        Congratulations, ${labels[i]}! 🎉<br>
+                        Exercising will grow your share of the wheel.<br>
+                        Align your activities with events for even more points!
+                    `;
+                    break;
+                }
             }
-
-            const normalizedAngle = (360 - (angle % 360)) % 360; // Reverse spin direction and normalize to 0–360
-            const winnerIndex = cumulativeAngles.findIndex(total => normalizedAngle <= total);
-
-            const winner = labels[winnerIndex];
-            document.getElementById('winnerAnnouncement').textContent = `Congratulations, ${winner}! 🎉`;
         }
+
+        // Leaderboard Toggle
+        const leaderboardToggle = document.getElementById('toggleLeaderboardButton');
+        const leaderboardContent = document.getElementById('leaderboardContent');
+        leaderboardToggle.addEventListener('click', function () {
+            const isHidden = leaderboardContent.style.display === 'none';
+            leaderboardContent.style.display = isHidden ? 'block' : 'none';
+            leaderboardToggle.textContent = isHidden ? 'Hide Leaderboard' : 'Show Leaderboard';
+        });
+
+
+
+        // Leaderboard Search
+        const searchInput = document.getElementById('searchLeaderboard');
+        const table = document.getElementById('leaderboardTable');
+        searchInput.addEventListener('keyup', function () {
+            const searchTerm = this.value.toLowerCase();
+            const rows = table.querySelectorAll('tbody tr');
+            rows.forEach(row => {
+                const username = row.cells[0].textContent.toLowerCase();
+                row.style.display = username.includes(searchTerm) ? '' : 'none';
+            });
+        });
+
     });
 </script>
 
@@ -156,56 +241,4 @@
     }
 </style>
 
-
-<script>
-    // Countdown logic
-    document.addEventListener('DOMContentLoaded', function () {
-        const countdownSeconds = {{ countdown | int }};  // Passed from the backend
-        const timerDisplay = document.getElementById('countdown-timer');
-        let secondsLeft = countdownSeconds;
-
-        function formatTime(seconds) {
-            const days = Math.floor(seconds / 86400);
-            const hours = Math.floor((seconds % 86400) / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secondsRemaining = seconds % 60;
-            return `${days}d ${hours}h ${minutes}m ${secondsRemaining}s`;
-        }
-
-        function updateTimer() {
-            if (secondsLeft > 0) {
-                timerDisplay.textContent = formatTime(secondsLeft);
-                secondsLeft -= 1;
-            } else {
-                timerDisplay.textContent = "Month has ended!";
-            }
-        }
-
-        updateTimer();  // Initialize
-        setInterval(updateTimer, 1000);  // Update every second
-    });
-</script>
-
-<script>
-    // Add search functionality
-    document.addEventListener('DOMContentLoaded', function () {
-        const table = document.getElementById('leaderboardTable');
-        const searchInput = document.createElement('input');
-        searchInput.type = 'text';
-        searchInput.className = 'form-control mb-3';
-        searchInput.placeholder = 'Search by username...';
-
-        table.parentElement.insertBefore(searchInput, table);
-
-        searchInput.addEventListener('keyup', function () {
-            const searchTerm = this.value.toLowerCase();
-            const rows = table.querySelectorAll('tbody tr');
-
-            rows.forEach(row => {
-                const email = row.cells[0].textContent.toLowerCase();
-                row.style.display = email.includes(searchTerm) ? '' : 'none';
-            });
-        });
-    });
-</script>
 {% endblock %}
